@@ -1,0 +1,38 @@
+name: review
+purpose: 変更または設計を根拠に基づいてレビューし、品質判断を残す
+entry_command: commands/review.md
+routing:
+  intents:
+    - review
+  required_request_fields:
+    - review_target
+  priority: 100
+steps:
+  - id: explore
+    agent: agents/explorer.yaml
+    input:
+      - レビュー対象
+      - 確認観点
+    output:
+      - 調査報告
+      - 影響範囲
+    gate: 対象と根拠が確認されている
+  - id: review
+    agent: agents/reviewer.yaml
+    input:
+      - レビュー対象
+      - 調査報告
+      - 影響範囲
+    output:
+      - レビュー結果
+      - 承認または差し戻し判断
+    gate: 根拠と重要度を含む判断が記録されている
+  - id: document
+    agent: agents/documentation.yaml
+    input:
+      - レビュー結果
+    output:
+      - 文書更新概要
+    gate: 必要なレビュー記録が残されている
+completion:
+  - レビュー対象、根拠、判断、未解決事項が記録されている

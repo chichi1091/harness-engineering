@@ -1,6 +1,13 @@
 name: bug-fix
 purpose: 不具合を根拠に基づいて修正し、再発を防ぐ
 entry_command: commands/bugfix.md
+routing:
+  intents:
+    - bug-fix
+  required_request_fields:
+    - expected_behavior
+    - actual_behavior
+  priority: 100
 steps:
   - id: triage
     agent: agents/architect.yaml

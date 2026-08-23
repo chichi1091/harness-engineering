@@ -12,6 +12,18 @@
 
 複数の Agent を協調させる YAML 定義。工程順、入出力、各工程のゲート、差し戻し先を持つ。
 
+`routing` には、Decision Engineが選択に使う `intents`、`required_request_fields`、`priority` を記載する。
+
+MVPの標準intentは `feature`、`bug-fix`、`review`、`design`、`refactor`、`research` である。追加のintentはWorkflow Registryに宣言することで、Decision Engine本体を変更せずに選択対象へ加えられる。
+
+## DecisionContext
+
+Decision Engineに渡す唯一の入力。ユーザー要求と、外部で読込済みのWorkflow Registryを含む。Decision Engine自身はファイルやランタイムへアクセスしない。
+
+## Delegation Plan
+
+Decision Engineが返す唯一の出力。MVPでは、状態、選択Workflow、不足情報、選択不能の根拠を表す。Agentへの実際の委譲・CLI実行は含まない。
+
 ## Artifact
 
 工程間で渡す成果物。MVP ではファイル形式を固定せず、会話・PR・Issue・リポジトリ上の文書など、実行環境に適した場所に残す。内容は Agent 定義の `outputs` と `done_when` に従う。

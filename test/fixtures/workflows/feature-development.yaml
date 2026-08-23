@@ -1,0 +1,13 @@
+name: feature-development
+purpose: 新機能を設計から文書化まで一貫して届ける
+routing:
+  intents:
+    - feature
+  required_request_fields:
+    - goal
+  priority: 100
+steps:
+  - id: design
+    agent: agents/architect.yaml
+    output:
+      - 設計メモ

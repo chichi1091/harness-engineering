@@ -1,0 +1,42 @@
+name: research
+purpose: 技術的な問いを調査し、根拠付きの選択肢と推奨を提示する
+entry_command: commands/research.md
+routing:
+  intents:
+    - research
+  required_request_fields:
+    - question
+  priority: 100
+steps:
+  - id: explore
+    agent: agents/explorer.yaml
+    input:
+      - 調査課題
+      - スコープ
+    output:
+      - 調査報告
+      - 根拠
+      - 未解決事項
+    gate: 調査した事実と推測が区別されている
+  - id: synthesize
+    agent: agents/architect.yaml
+    input:
+      - 調査報告
+      - 根拠
+      - 未解決事項
+    output:
+      - 選択肢
+      - 推奨
+      - 判断理由
+    gate: 推奨とトレードオフが根拠付きで示されている
+  - id: document
+    agent: agents/documentation.yaml
+    input:
+      - 調査報告
+      - 選択肢
+      - 推奨
+    output:
+      - 調査結果文書
+    gate: 利用者が判断できる形で結果が文書化されている
+completion:
+  - 調査結果、選択肢、推奨、未解決事項が記録されている

@@ -14,11 +14,23 @@ Command ──→ Workflow ──→ Agent definitions
 依頼の入口      工程とゲート      能力・責務・成果物
 ```
 
+Decision Engine導入後は、Commandの明示指定またはユーザー要求を入力にWorkflowを選び、その選択結果をAdapterが実行する。
+
+```text
+DecisionContext → Decision Engine（Pure Function）→ Delegation Plan → Adapter（後続フェーズ）
+```
+
 - **Command** は依頼の種類を選び、開始条件と対象ワークフローを示す。
 - **Workflow** は役割の実行順、各工程の入力・出力、完了ゲートを定める。
 - **Agent definition** は役割の必要能力、責務、禁止事項、成果物、完了条件を定める。
 
 これら三つはランタイム非依存の正本である。MVP では `AGENTS.md` を共通の実行規約とし、人または各AIランタイムが定義を読み取って進行する。
+
+Decision Engine MVPは、読込済みWorkflow Registryを入力に、Workflow選択のDelegation Planを返す。ファイル読込、CLI実行、Agent実行などの副作用は持たない。詳細は [Decision Engine](decision-engine.md) を参照する。
+
+OpenCode Adapter MVPは、Workflow YAMLの読込、Registry構築、DecisionContext生成、Engine呼出、OpenCode Markdownコマンド内容への変換を担う。ファイルへの配置、CLI実行、AIモデル呼出は後続のRuntime層の責務である。詳細は [OpenCode Adapter](adapters/opencode.md) を参照する。
+
+OpenCode Executor MVPは、Adapterが返したOpenCodeコマンドのパスと内容を `.opencode/commands/` へ安全に配置する副作用層である。CLI実行とAIモデル呼出は行わない。詳細は [OpenCode Executor](runtimes/opencode.md) を参照する。
 
 ## 分離の境界
 

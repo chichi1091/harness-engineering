@@ -1,62 +1,64 @@
-name: feature-development
-purpose: 新機能を設計から文書化まで一貫して届ける
-entry_command: commands/feature.md
+name: refactor
+purpose: 外部仕様を維持しながら、保守性を改善する
+entry_command: commands/refactor.md
 routing:
   intents:
-    - feature
+    - refactor
   required_request_fields:
+    - target
     - goal
   priority: 100
 steps:
   - id: design
     agent: agents/architect.yaml
     input:
-      - 利用者の依頼
+      - 対象
+      - 改善目標
     output:
-      - 設計メモ
-      - 受入条件
-      - 調査依頼
-    gate: 実装対象と受入条件が明確である
+      - リファクタリング方針
+      - 仕様維持の受入条件
+      - Explorer への調査依頼
+    gate: 変更対象と仕様維持条件が明確である
   - id: explore
     agent: agents/explorer.yaml
     input:
-      - 設計メモ
+      - リファクタリング方針
       - 調査依頼
     output:
       - 調査報告
       - 影響範囲
-    gate: 変更箇所とリスクが根拠付きで示されている
+    gate: 依存関係と回帰リスクが根拠付きで示されている
   - id: implement
     agent: agents/developer.yaml
     input:
-      - 設計メモ
-      - 受入条件
+      - リファクタリング方針
+      - 仕様維持の受入条件
       - 調査報告
     output:
       - 実装結果
       - 変更概要
-    gate: 受入条件に対応する実装がある
+    gate: 改善目標を満たし、外部仕様を変更していない
   - id: test
     agent: agents/test-engineer.yaml
     input:
-      - 受入条件
+      - 仕様維持の受入条件
       - 実装結果
       - 変更概要
     output:
       - テスト結果
       - 未検証領域
-    gate: 受入条件の検証結果が記録されている
+    gate: 仕様維持と回帰リスクの検証結果が記録されている
     on_failure: implement
   - id: review
     agent: agents/reviewer.yaml
     input:
-      - 設計メモ
+      - リファクタリング方針
       - 実装結果
       - テスト結果
     output:
       - レビュー結果
-      - 判断
-    gate: 承認されている
+      - 承認または差し戻し判断
+    gate: 保守性の改善と仕様維持が承認されている
     on_failure: implement
   - id: document
     agent: agents/documentation.yaml
@@ -66,7 +68,6 @@ steps:
       - 変更概要
     output:
       - 更新済み文書
-      - 文書更新概要
     gate: 必要な文書更新が完了している
 completion:
-  - 実装、テスト、レビュー、文書化の成果物がそろっている
+  - 改善内容、仕様維持の証拠、レビュー結果が記録されている
