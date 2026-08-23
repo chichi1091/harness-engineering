@@ -1,0 +1,62 @@
+name: bug-fix
+purpose: 不具合を根拠に基づいて修正し、再発を防ぐ
+entry_command: commands/bugfix.md
+steps:
+  - id: triage
+    agent: agents/architect.yaml
+    input:
+      - 不具合報告
+    output:
+      - 問題定義
+      - 修正の受入条件
+      - 調査依頼
+    gate: 再現条件または不足情報が明確である
+  - id: explore
+    agent: agents/explorer.yaml
+    input:
+      - 問題定義
+      - 調査依頼
+    output:
+      - 原因仮説
+      - 影響範囲
+    gate: 修正候補に根拠がある
+  - id: implement
+    agent: agents/developer.yaml
+    input:
+      - 修正の受入条件
+      - 原因仮説
+      - 影響範囲
+    output:
+      - 実装結果
+      - 変更概要
+    gate: 修正と再現テストの準備ができている
+  - id: test
+    agent: agents/test-engineer.yaml
+    input:
+      - 修正の受入条件
+      - 実装結果
+    output:
+      - テスト結果
+      - 未検証領域
+    gate: 不具合再現と修正後の検証結果が記録されている
+    on_failure: implement
+  - id: review
+    agent: agents/reviewer.yaml
+    input:
+      - 実装結果
+      - テスト結果
+    output:
+      - レビュー結果
+      - 判断
+    gate: 承認されている
+    on_failure: implement
+  - id: document
+    agent: agents/documentation.yaml
+    input:
+      - 実装結果
+      - レビュー結果
+    output:
+      - 更新済み文書
+    gate: 必要な文書更新が完了している
+completion:
+  - 原因、修正、再発確認、レビュー結果が記録されている
