@@ -11,6 +11,7 @@ Frameworkを実運用して得られた品質改善候補を、影響と優先�
 | P2 | Capability利用可能性の検証 | Workflowが必要なAgent能力を要求していることを確認する | Agent、Workflow、Matrix |
 | P2 | OpenCode生成コマンドのスナップショット検証 | Markdown変換の意図しない変更を検出する | Adapter、テスト |
 | P2 | Adapter共通契約の抽出 | Codex、Claude Code、Gemini CLI追加の重複を抑える | Adapter層、docs |
+| P2 | Adapter経由で読み込んだRegistryへの意味検証適用 | CIゲートを経ないRegistry利用でもEngine実行前に健全性を保証する | OpenCode Adapter、workflow-registry-validator |
 | P3 | リリース・互換性ポリシー | 定義形式の進化を利用者へ安全に伝える | README、CHANGELOG、ADR |
 
 最初にP0を選ぶ。全Workflowと全Adapterの前提となるRegistryの健全性を、実行前かつPR時に保証できるためである。

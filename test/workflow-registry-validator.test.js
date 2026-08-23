@@ -56,11 +56,118 @@ test("存在しないCommandとAgentへの参照を拒否する", () => {
 
 test("重複Workflow名と無効な差し戻し先を拒否する", () => {
   const first = validWorkflow();
-  const second = validWorkflow({ sourcePath: "workflows/design-copy.yaml" });
+  // intentを変えて名前重複とon_failure検証に集中する（routing衝突は別テストで検証する）。
+  const second = validWorkflow({
+    sourcePath: "workflows/design-copy.yaml",
+    routing: {
+      intents: ["design-copy"],
+      required_request_fields: ["goal"],
+      priority: 100
+    }
+  });
   second.steps[1].on_failure = "missing";
 
   assert.deepEqual(validateWorkflowRegistry([first, second], knownPaths), [
     'workflows/design-copy.yaml: duplicate workflow name "design".',
     "workflows/design-copy.yaml: steps[1].on_failure must reference an earlier step."
   ]);
+});
+
+test("同一intentを同一優先度で持つWorkflowの組を拒否する", () => {
+  const first = validWorkflow();
+  const second = validWorkflow({
+    sourcePath: "workflows/design-quick.yaml",
+    name: "design-quick"
+  });
+
+  const errors = validateWorkflowRegistry([first, second], knownPaths);
+
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /workflows\/design-quick\.yaml/);
+  assert.match(errors[0], /workflows\/design\.yaml/);
+  assert.deepEqual(errors, [
+    'workflows/design-quick.yaml: routing intent "design" is also routed by workflows/design.yaml with the same priority (100).'
+  ]);
+});
+
+test("同一intentでも優先度が異なる場合は許容する", () => {
+  const first = validWorkflow();
+  const second = validWorkflow({
+    sourcePath: "workflows/design-quick.yaml",
+    name: "design-quick",
+    routing: {
+      intents: ["design"],
+      required_request_fields: ["goal"],
+      priority: 110
+    }
+  });
+
+  assert.deepEqual(validateWorkflowRegistry([first, second], knownPaths), []);
+});
+
+test("同一intent・同一優先度の3Workflowでは後続それぞれに1件報告する", () => {
+  const first = validWorkflow();
+  const second = validWorkflow({ sourcePath: "workflows/design-v2.yaml", name: "design-v2" });
+  const third = validWorkflow({ sourcePath: "workflows/design-v3.yaml", name: "design-v3" });
+
+  assert.deepEqual(validateWorkflowRegistry([first, second, third], knownPaths), [
+    'workflows/design-v2.yaml: routing intent "design" is also routed by workflows/design.yaml with the same priority (100).',
+    'workflows/design-v3.yaml: routing intent "design" is also routed by workflows/design.yaml with the same priority (100).'
+  ]);
+});
+
+test("衝突の基準は優先度ごとの最初のWorkflowである", () => {
+  const baseline = validWorkflow();
+  const urgent = validWorkflow({
+    sourcePath: "workflows/design-urgent.yaml",
+    name: "design-urgent",
+    routing: {
+      intents: ["design"],
+      required_request_fields: ["goal"],
+      priority: 200
+    }
+  });
+  const urgentCopy = validWorkflow({
+    sourcePath: "workflows/design-urgent-copy.yaml",
+    name: "design-urgent-copy",
+    routing: {
+      intents: ["design"],
+      required_request_fields: ["goal"],
+      priority: 200
+    }
+  });
+
+  assert.deepEqual(validateWorkflowRegistry([baseline, urgent, urgentCopy], knownPaths), [
+    'workflows/design-urgent-copy.yaml: routing intent "design" is also routed by workflows/design-urgent.yaml with the same priority (200).'
+  ]);
+});
+
+test("routingが不正なWorkflowが混在しても衝突検証はカスケードしない", () => {
+  const intact = validWorkflow();
+  const brokenRouting = validWorkflow({
+    sourcePath: "workflows/broken-routing.yaml",
+    name: "broken-routing",
+    routing: "not-an-object"
+  });
+  const stringIntents = validWorkflow({
+    sourcePath: "workflows/string-intents.yaml",
+    name: "string-intents",
+    routing: { intents: "design", priority: 100 }
+  });
+
+  const errors = validateWorkflowRegistry([intact, brokenRouting, stringIntents], knownPaths);
+
+  assert.equal(errors.filter((error) => error.includes("is also routed by")).length, 0);
+});
+
+test("同一Workflow内の重複intentは許容する", () => {
+  const workflow = validWorkflow({
+    routing: {
+      intents: ["design", "design"],
+      required_request_fields: ["goal"],
+      priority: 100
+    }
+  });
+
+  assert.deepEqual(validateWorkflowRegistry([workflow], knownPaths), []);
 });

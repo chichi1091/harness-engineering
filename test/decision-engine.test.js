@@ -108,6 +108,77 @@ test("Workflowが存在しない場合はblockedを返す", () => {
   assert.equal(plan.diagnostics[0].code, "workflow_not_found");
 });
 
+test("同一intentに同一優先度のWorkflowが複数ある場合はblockedを返す", () => {
+  const plan = decide({
+    request: { intent: "feature", goal: "利用者が設定を保存できる" },
+    workflowRegistry: [
+      workflowRegistry[0],
+      {
+        name: "feature-development-quick",
+        purpose: "小規模な機能追加向けのWorkflow",
+        routing: {
+          intents: ["feature"],
+          required_request_fields: ["goal"],
+          priority: 100
+        }
+      }
+    ]
+  });
+
+  assert.equal(plan.status, "blocked");
+  assert.equal(plan.selectedWorkflow, null);
+  assert.equal(plan.diagnostics[0].code, "ambiguous_workflow");
+});
+
+test("同一intentでは優先度が高いWorkflowを選択する", () => {
+  const plan = decide({
+    request: { intent: "feature", goal: "利用者が設定を保存できる" },
+    workflowRegistry: [
+      workflowRegistry[0],
+      {
+        name: "feature-development-urgent",
+        routing: {
+          intents: ["feature"],
+          required_request_fields: ["goal"],
+          priority: 110
+        }
+      }
+    ]
+  });
+
+  assert.equal(plan.status, "ready");
+  assert.equal(plan.selectedWorkflow?.name, "feature-development-urgent");
+});
+
+test("priority未指定のWorkflowは既定の0として扱われる", () => {
+  // CIの `validate:workflows` を通過したRegistryではpriorityは必ず有限数のため、
+  // この状況は検証済みRegistryでは発生しない。ここではEngineの契約（`?? 0`）を固定する。
+  const plan = decide({
+    request: { intent: "feature", goal: "利用者が設定を保存できる" },
+    workflowRegistry: [
+      {
+        name: "feature-development-fallback",
+        routing: {
+          intents: ["feature"],
+          required_request_fields: ["goal"]
+        }
+      },
+      workflowRegistry[0]
+    ]
+  });
+
+  assert.equal(plan.status, "ready");
+  assert.equal(plan.selectedWorkflow?.name, "feature-development");
+});
+
+test("intentがない場合はneeds_clarificationを返す", () => {
+  const plan = decide({ request: {}, workflowRegistry });
+
+  assert.equal(plan.status, "needs_clarification");
+  assert.deepEqual(plan.clarification?.missing_fields, ["intent"]);
+  assert.equal(plan.diagnostics[0].code, "missing_intent");
+});
+
 test("必要情報が不足する場合はneeds_clarificationを返す", () => {
   const plan = decide({
     request: { intent: "feature" },

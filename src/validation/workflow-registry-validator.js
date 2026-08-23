@@ -11,7 +11,7 @@ export function validateWorkflowRegistry(workflows, { agentPaths, commandPaths }
   const workflowNames = new Set();
 
   for (const workflow of workflows) {
-    const label = typeof workflow.sourcePath === "string" ? workflow.sourcePath : "<unknown workflow>";
+    const label = workflowLabel(workflow);
     validateRequiredString(workflow.name, `${label}: name`, errors);
 
     if (typeof workflow.name === "string") {
@@ -28,7 +28,52 @@ export function validateWorkflowRegistry(workflows, { agentPaths, commandPaths }
     validateCompletion(workflow.completion, label, errors);
   }
 
+  validateRoutingConflicts(workflows, errors);
+
   return errors;
+}
+
+/**
+ * Rejects registries where two workflows route the same intent with the same
+ * effective priority. The Decision Engine blocks such intents at runtime
+ * ("ambiguous_workflow"), so validation must catch the conflict first.
+ * Effective priority mirrors the engine's `routing.priority ?? 0` semantics.
+ */
+function validateRoutingConflicts(workflows, errors) {
+  const claimsByIntent = new Map();
+
+  for (const workflow of workflows) {
+    // Malformed routing is already reported by the per-workflow checks above;
+    // skipping it here prevents cascade errors from partial input.
+    if (!isRecord(workflow.routing) || !Array.isArray(workflow.routing.intents)) continue;
+
+    const label = workflowLabel(workflow);
+    const priority = workflow.routing.priority ?? 0;
+
+    for (const intent of workflow.routing.intents) {
+      if (typeof intent !== "string" || intent.trim() === "") continue;
+
+      let claimsByPriority = claimsByIntent.get(intent);
+      if (claimsByPriority === undefined) {
+        claimsByPriority = new Map();
+        claimsByIntent.set(intent, claimsByPriority);
+      }
+
+      const firstClaimant = claimsByPriority.get(priority);
+      // Duplicate intents within one workflow resolve to that workflow and
+      // are harmless at runtime.
+      if (firstClaimant === workflow) continue;
+
+      if (firstClaimant) {
+        errors.push(
+          `${label}: routing intent "${intent}" is also routed by ${workflowLabel(firstClaimant)} with the same priority (${priority}).`
+        );
+        continue;
+      }
+
+      claimsByPriority.set(priority, workflow);
+    }
+  }
 }
 
 function validateRouting(routing, label, errors) {
@@ -109,6 +154,10 @@ function validateStringArray(value, label, errors) {
   if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || item.trim() === "")) {
     errors.push(`${label} must be an array of non-empty strings.`);
   }
+}
+
+function workflowLabel(workflow) {
+  return typeof workflow.sourcePath === "string" ? workflow.sourcePath : "<unknown workflow>";
 }
 
 function isRecord(value) {
