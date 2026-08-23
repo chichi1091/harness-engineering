@@ -1,0 +1,51 @@
+# Changelog
+
+Harness Engineering の変更履歴。このファイルは v0.1.0-alpha のリリース候補総括から運用を開始する。
+
+## [0.1.0-alpha] - 2026-08-23
+
+最初のリリース候補(Release Candidate)。ランタイム非依存の共通定義正本、Workflow選択のPure Function、OpenCode向けの値生成・配置層、CI品質ゲートまでを含む。
+
+### 完成したもの
+
+- **共通定義正本(ランタイム非依存)**
+  - `agents/`: 6役割(architect、explorer、developer、test-engineer、reviewer、documentation)。能力・責務・制約・入出力・完了条件の統一スキーマ。モデル名・CLI構文を含まない
+  - `commands/`: 6入口(feature、bugfix、review、design、refactor、research)
+  - `workflows/`: 6ワークフロー。`routing`(intents / required_request_fields / priority)、steps、gate、`on_failure` 差し戻し、completion
+- **Decision Engine**(`src/decision-engine/`): Pure Function として intent から Workflow を選択。状態は `ready` / `needs_clarification` / `blocked`、診断コード付き。ファイルI/O・ランタイム依存なし
+- **Workflow Registry 意味検証**(`src/validation/` + `scripts/`): 参照切れ・Workflow名重複・不正な `on_failure`・routing衝突(同一intent×同一優先度)をPR時に検出
+- **OpenCode Adapter**(`src/adapters/opencode/`): YAML読込 → Registry構築 → DecisionContext生成 → Delegation Plan → Markdownコマンド生成。出力は値のみで書込なし
+- **OpenCode Executor**(`src/runtimes/opencode/`): `.opencode/commands/` への安全な配置。シンボリックリンク拒否、パストラバーサル拒否、上書きポリシー(`error` 既定 / `overwrite` 明示)
+- **CI品質ゲート**(`.github/workflows/quality.yml`): PRで単体テスト(37件)、YAML構文検証、Registry意味検証、`git diff --check` を実行
+- **ドキュメント**(`docs/`): アーキテクチャ、用語、能力マトリクス、各層の責務境界、dogfooding記録、改善バックログ
+
+### 未完成なもの
+
+- **実行オーケストレーション**: AdapterとExecutorをつなぐCLI入口がなく、ライブラリAPIのみ。`opencode` CLI実行とAIモデル呼出は引き続き対象外
+- **他ランタイムAdapter**: Codex、Claude Code、Gemini CLI は未対応(共通契約の抽出は改善バックログ P2)
+- **検証の網**: Adapter経由で読み込んだRegistryへの意味検証適用(P2)、Command↔Workflowの逆方向一対一検証(P1)、工程成果物契約と能力語彙の機械検証(P1/P2)、生成コマンドのスナップショット検証(P2)
+- **CI**: mainブランチへの直接pushを検証するトリガーがなく、PR経由のみ
+- **スキーマ単一源**: workflowスキーマ知識が `contracts.d.ts` とvalidatorに二重化。JSON Schema 等による単一源は未整備
+- **リリース基盤**: LICENSE、タグ付け・配布の手順、バージョニングと互換性ポリシー(P3)、Executorの原子的上書き(P1)
+
+### 次のマイルストーン
+
+- **v0.1.0(正式MVP完成)**
+  1. Adapter→Executorを接続するCLIエントリポイント(npm script / bin)の追加
+  2. mainブランチ向けCIトリガーの追加
+  3. LICENSE とリリース・互換性ポリシーの整備
+  4. READMEのMVPスコープ記載を実態へ一致
+- **v0.2.0(ランタイム展開)**
+  1. Adapter共通契約の抽出
+  2. Codex / Claude Code / Gemini CLI 向けAdapterの追加
+  3. Adapter経由Registry検証の適用
+- **v0.3.0(検証の完成)**
+  1. 工程成果物契約と能力語彙の意味検証への統合
+  2. JSON Schema によるスキーマ単一源化
+  3. 警告チャネルの追加(優先度シャドウイングの検知等)
+
+### 構成コミット
+
+- `aac591a` feat: bootstrap Harness Engineering MVP
+- `993c90a` feat: implement decision engine, OpenCode adapter/executor, and registry validation
+- `3854dfb` test(validation): detect cross-workflow routing conflicts
