@@ -115,11 +115,36 @@ function renderOpenCodeCommand(workflow, profile) {
     ...steps
   ];
 
+  const retryPolicyLines = renderRetryPolicyLines(workflow);
+  if (retryPolicyLines.length > 0) {
+    lines.push(
+      "",
+      "## Retry policy",
+      "再試行の上限に達したステップは、on_failure による差し戻しを実行しないでください。",
+      "代わりに未解決事項を成果物としてまとめ、利用者へ返して判断を仰いでください。",
+      "",
+      ...retryPolicyLines
+    );
+  }
+
   if (profile) {
     lines.push("", "## Role assignments", ...describeRoleAssignments(profile, workflowRoles(workflow)));
   }
 
   return lines.join("\n");
+}
+
+function renderRetryPolicyLines(workflow) {
+  return (workflow.steps ?? [])
+    .filter((step) => step?.retry_policy !== undefined)
+    .map((step) => {
+      const maxAttempts = step.retry_policy.max_attempts;
+      const redirect = step.on_failure ? `（on_failure: ${step.on_failure}）` : "";
+      const retryOn = Array.isArray(step.retry_policy.retry_on)
+        ? `再試行は失敗に ${step.retry_policy.retry_on.join("、")} が含まれる場合に限ります。`
+        : "";
+      return `- ${step.id}: 最大 ${maxAttempts} 回まで実行できます${redirect}。${retryOn}上限に達した場合は差し戻しを実行せず、未解決事項を利用者へ返してください。`;
+    });
 }
 
 function workflowRoles(workflow) {

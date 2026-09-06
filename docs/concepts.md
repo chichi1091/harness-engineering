@@ -32,6 +32,16 @@ Reviewerが指摘に付与する重要度。正本は `agents/reviewer.yaml` で
 
 原則としてBlockingにしない指摘: cosmeticな変更、個人の好みによるスタイル指摘、根拠のある保守性改善を示さないspeculative refactoring、本変更と無関係な既存問題。
 
+## Retry Policy
+
+Test/Reviewなど、失敗時に差し戻しを行うステップ（`on_failure`）に置く再試行上限。正本は各Workflow YAMLの `retry_policy` である。
+
+- `max_attempts` はステップの総実行回数上限（初回を含む）。`2` なら初回と再試行1回
+- `retry_on` は再試行を許す失敗の分類。値は `agents/reviewer.yaml` のSeverity語彙（`blocker`、`high` など）で、`npm run validate:workflows` が語彙の突合を行う。省略時はあらゆる失敗が再試行対象
+- `on_failure` を持つステップは `retry_policy` の宣言が必須。これにより差し戻しの後退辺はすべて有界になり、Developer ⇄ Reviewer/Test の無限ループが構造的に防止される
+- 実行時の再試行回数は台帳に記録する（`src/execution/retry-policy.js` の `recordAttempt` / `attemptCount`）。再試行の可否は `decideStepRetry` が、上限到達時に利用者へ返す未解決事項付きの成果物は `buildRetryExhaustionArtifact` が担う
+- 上限に達した場合、または `retry_on` に合致しない失敗の場合は、`on_failure` による差し戻しを行わない。未解決事項を成果物として利用者へ返し、継続の判断は利用者が行う
+
 ## Execution Profile
 
 実行環境ごとに役割とモデルの割当を定義する `profiles/` のYAML。`assignments` は役割名を鍵とし、`provider`、`model`、`mode`（`readonly` または `write`）を持つ。

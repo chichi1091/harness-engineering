@@ -47,6 +47,8 @@ steps:
       - 未検証領域
     gate: 不具合再現と修正後の検証結果が記録されている
     on_failure: implement
+    retry_policy:
+      max_attempts: 2
   - id: review
     agent: agents/reviewer.yaml
     input:
@@ -57,6 +59,11 @@ steps:
       - 判断
     gate: 承認されている
     on_failure: implement
+    retry_policy:
+      max_attempts: 2
+      retry_on:
+        - blocker
+        - high
   - id: document
     agent: agents/documentation.yaml
     input:

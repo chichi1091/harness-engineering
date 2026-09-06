@@ -17,6 +17,12 @@ Harness Engineering の変更履歴。このファイルは v0.1.0-alpha のリ�
 
 - Execution ProfileでGPTを利用する役割（developer、test-engineer）のモデルを `gpt-5.6-terra` に指定
 
+### Added
+
+- WorkflowのRetry Policy（`retry_policy`）。`on_failure` を持つステップに再試行上限（`max_attempts`、総実行回数・初回含む）を必須化し、再試行条件（`retry_on`、ReviewerのSeverity語彙）を指定できる。上限到達時や非対象の失敗時は差し戻しを行わず未解決事項を利用者へ返すため、Developer ⇄ Reviewer/Test の無限ループが構造的に防止される
+- `src/execution/retry-policy.js`: 試行回数の記録（`recordAttempt`/`attemptCount`）、再試行判断（`decideStepRetry`）、打ち切り成果物の生成（`buildRetryExhaustionArtifact`）
+- OpenCode Delegationコマンドへの Retry policy セクション追加（上限到達時に差し戻さず利用者へ返す実行指示を含む）
+
 ## [0.1.0-alpha] - 2026-08-23
 
 最初のリリース候補(Release Candidate)。ランタイム非依存の共通定義正本、Workflow選択のPure Function、OpenCode向けの値生成・配置層、CI品質ゲートまでを含む。

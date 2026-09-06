@@ -2,11 +2,15 @@
  * Validates the semantic relationships in a loaded Workflow Registry.
  * It is pure: filesystem reads and YAML parsing belong to the caller.
  *
+ * severityNames is the optional set of severity names defined by the
+ * canonical agents/reviewer.yaml; when supplied, retry_on entries are
+ * checked against it.
+ *
  * @param {readonly Record<string, unknown>[]} workflows
- * @param {{ agentPaths: ReadonlySet<string>, commandPaths: ReadonlySet<string> }} knownPaths
+ * @param {{ agentPaths: ReadonlySet<string>, commandPaths: ReadonlySet<string>, severityNames?: ReadonlySet<string> }} knownPaths
  * @returns {string[]}
  */
-export function validateWorkflowRegistry(workflows, { agentPaths, commandPaths }) {
+export function validateWorkflowRegistry(workflows, { agentPaths, commandPaths, severityNames }) {
   const errors = [];
   const workflowNames = new Set();
 
@@ -24,7 +28,7 @@ export function validateWorkflowRegistry(workflows, { agentPaths, commandPaths }
     validateRequiredString(workflow.purpose, `${label}: purpose`, errors);
     validateReference(workflow.entry_command, commandPaths, `${label}: entry_command`, errors);
     validateRouting(workflow.routing, label, errors);
-    validateSteps(workflow.steps, agentPaths, label, errors);
+    validateSteps(workflow.steps, { agentPaths, severityNames }, label, errors);
     validateCompletion(workflow.completion, label, errors);
   }
 
@@ -90,7 +94,7 @@ function validateRouting(routing, label, errors) {
   }
 }
 
-function validateSteps(steps, agentPaths, label, errors) {
+function validateSteps(steps, { agentPaths, severityNames }, label, errors) {
   if (!Array.isArray(steps) || steps.length === 0) {
     errors.push(`${label}: steps must be a non-empty array.`);
     return;
@@ -113,6 +117,7 @@ function validateSteps(steps, agentPaths, label, errors) {
     validateNonEmptyStringArray(step.input, `${stepLabel}.input`, errors);
     validateNonEmptyStringArray(step.output, `${stepLabel}.output`, errors);
     validateRequiredString(step.gate, `${stepLabel}.gate`, errors);
+    validateRetryPolicy(step, { severityNames, stepLabel }, errors);
   }
 
   for (const [index, step] of steps.entries()) {
@@ -122,6 +127,45 @@ function validateSteps(steps, agentPaths, label, errors) {
     );
     if (typeof step.on_failure !== "string" || !previousStepIds.has(step.on_failure)) {
       errors.push(`${label}: steps[${index}].on_failure must reference an earlier step.`);
+    }
+  }
+}
+
+/**
+ * A step that declares on_failure creates a backward edge; without a bound
+ * the Developer → Test/Review loop could run forever. Requiring retry_policy
+ * on every such step makes the loop countable and lets the runtime stop with
+ * an unresolved-items artifact instead of looping.
+ */
+function validateRetryPolicy(step, { severityNames, stepLabel }, errors) {
+  if (step.retry_policy === undefined && step.on_failure === undefined) return;
+
+  if (step.retry_policy === undefined) {
+    errors.push(`${stepLabel} declares on_failure and must define retry_policy.`);
+    return;
+  }
+
+  if (!isRecord(step.retry_policy)) {
+    errors.push(`${stepLabel}.retry_policy must be an object.`);
+    return;
+  }
+
+  const { max_attempts, retry_on } = step.retry_policy;
+  if (typeof max_attempts !== "number" || !Number.isInteger(max_attempts) || max_attempts < 1) {
+    errors.push(`${stepLabel}.retry_policy.max_attempts must be an integer greater than or equal to 1.`);
+  }
+
+  if (retry_on === undefined) return;
+  if (!Array.isArray(retry_on) || retry_on.length === 0 || retry_on.some((name) => typeof name !== "string" || name.trim() === "")) {
+    errors.push(`${stepLabel}.retry_policy.retry_on must be a non-empty array of severity names.`);
+    return;
+  }
+
+  if (severityNames !== undefined) {
+    for (const name of retry_on) {
+      if (!severityNames.has(name)) {
+        errors.push(`${stepLabel}.retry_policy.retry_on references unknown severity "${name}".`);
+      }
     }
   }
 }

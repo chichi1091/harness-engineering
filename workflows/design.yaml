@@ -38,6 +38,11 @@ steps:
       - 承認または差し戻し判断
     gate: 設計が承認されている
     on_failure: design
+    retry_policy:
+      max_attempts: 2
+      retry_on:
+        - blocker
+        - high
   - id: document
     agent: agents/documentation.yaml
     input:
