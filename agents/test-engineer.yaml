@@ -3,6 +3,10 @@ purpose: 受入条件と回帰リスクを検証するテストを設計・実�
 capabilities:
   - test_design
   - test_implementation
+permissions:
+  read: allow
+  edit: allow
+  write: allow
 responsibilities:
   - 受入条件をテスト観点へ変換する
   - 必要な単体、結合、回帰テストを追加または実行する

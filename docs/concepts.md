@@ -61,9 +61,19 @@ Test/Reviewなど、失敗時に差し戻しを行うステップ（`on_failure`
 - 正本の Agent 定義はモデル情報を持たない。実行時の割当は Profile だけが担う
 - 役割名は `agents/*.yaml` の名前（ファイル名の拡張子を除いたもの）と一致しなければならない
 - 割当は部分集合でよい。未割当の役割は実行環境の既定に従う
-- `mode` は権限の目安である。`readonly` は書込系ツールを無効化し、`write` は実行環境の既定権限に従う
+- `mode` は権限の目安である。`readonly` は役割の Permission をさらに狭め、`write` は実行環境の既定権限に従う
 - OpenCode Adapter は `agents/*.yaml` の目的・責務・制約・完了条件を `.opencode/agent/harness-<役割名>.md` のPrompt本文へ埋め込んで生成する。`harness-` 接頭辞は生成物であることを示し、生成物は手書きしない（正本は常に `agents/*.yaml` と Profile）
 - 意味検証は `npm run validate:profiles` が担う
+
+## Permission
+
+役割がランタイム上で持つアクセス権の共通モデル。正本は各 `agents/*.yaml` の `permissions` 宣言であり、`read` / `edit` / `write` の3キーを `allow` / `deny` の2値で宣言する。
+
+- `src/permission/permissions.js` が宣言の検証（`validatePermissions`）と実効権限の合成（`resolveEffectivePermissions`）を担い、どのランタイムにも依存しない
+- 実効権限は役割の宣言とProfileの `mode` の交差である。`readonly` 割当は `edit` と `write` を `deny` に狭める。**Profile が役割の deny を緩めることはできない**
+- OpenCode Adapter は実効権限を生成Agent定義の `tools:` ブロックへ変換する（例: read-only役割は `read: true` / `edit: false` / `write: false`）
+- これにより Explorer の「リポジトリを変更してはならない」、Reviewer の「実装変更は行わない」という制約が、Prompt上の指示ではなくランタイムレベルで強制される
+- 既知の限界: shell実行（bash）は本モデルの対象外であり、読み取り専用コマンドと書込コマンドの区別はランタイムのサンドボックスに依存する
 
 ## Artifact
 

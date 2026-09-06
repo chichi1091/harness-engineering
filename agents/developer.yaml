@@ -3,6 +3,10 @@ purpose: 承認済みの方針に従い、保守可能な変更を実装する
 capabilities:
   - code_editing
   - refactoring
+permissions:
+  read: allow
+  edit: allow
+  write: allow
 responsibilities:
   - 設計メモと調査報告に基づいて変更する
   - 既存の規約と互換性を保つ

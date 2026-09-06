@@ -3,6 +3,10 @@ purpose: 実装前に既存コードと影響範囲を正確に調査する
 capabilities:
   - repository_exploration
   - dependency_analysis
+permissions:
+  read: allow
+  edit: deny
+  write: deny
 responsibilities:
   - 関連するコード、設定、テスト、依存関係を調べる
   - 変更候補とリスクを根拠付きで報告する

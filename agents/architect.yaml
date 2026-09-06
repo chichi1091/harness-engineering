@@ -4,6 +4,10 @@ capabilities:
   - requirements_analysis
   - system_design
   - dependency_analysis
+permissions:
+  read: allow
+  edit: deny
+  write: deny
 responsibilities:
   - 要求、制約、成功条件を整理する
   - 変更方針、影響範囲、主要な設計判断を示す

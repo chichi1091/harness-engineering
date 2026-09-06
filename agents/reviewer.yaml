@@ -4,6 +4,10 @@ capabilities:
   - code_review
   - security_review
   - performance_review
+permissions:
+  read: allow
+  edit: deny
+  write: deny
 responsibilities:
   - 仕様、設計、実装、テスト結果の整合性を確認する
   - 問題点をSeverityと根拠付きで報告する

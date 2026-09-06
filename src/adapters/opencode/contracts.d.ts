@@ -4,6 +4,7 @@ import type {
   RequestInput,
   WorkflowDefinition
 } from "../../decision-engine/contracts.js";
+import type { Permissions } from "../../permission/contracts.js";
 
 export interface RegisteredWorkflow extends WorkflowDefinition {
   sourcePath: string;
@@ -68,6 +69,7 @@ export interface AgentDefinition {
   responsibilities?: readonly string[];
   constraints?: readonly string[];
   done_when?: readonly string[];
+  permissions?: Permissions;
   [field: string]: unknown;
 }
 
