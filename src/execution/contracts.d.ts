@@ -51,6 +51,52 @@ export type BudgetExhaustionArtifact = {
   message: string;
 };
 
+export type EscalationCondition = "low_confidence" | "critical_and_low_confidence";
+
+export type ModelTier = {
+  provider: string;
+  model: string;
+};
+
+export type EscalationRule = {
+  when: EscalationCondition;
+  tier: string;
+};
+
+export type ModelPolicy = {
+  escalation: readonly EscalationRule[];
+  max_escalations: number;
+};
+
+export type EscalationRecord = {
+  step: string;
+  from: string;
+  to: string;
+  reason: EscalationCondition;
+};
+
+export type EscalationLedger = {
+  readonly records: readonly EscalationRecord[];
+};
+
+export type EscalationDecision = {
+  action: "keep" | "escalate" | "stop";
+  tier?: string;
+  reason: string;
+  record?: EscalationRecord;
+};
+
+export type EscalationExhaustionArtifact = {
+  type: "escalation_exhausted";
+  workflow: string;
+  step: string;
+  escalations_used: number;
+  max_escalations: number;
+  records: readonly EscalationRecord[];
+  unresolved: readonly string[];
+  message: string;
+};
+
 export type RetryExhaustionArtifact = {
   type: "retry_exhausted";
   workflow: string;

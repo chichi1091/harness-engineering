@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse } from "yaml";
 import { resolveEffectivePermissions, validatePermissions } from "../../permission/permissions.js";
+import { resolveTierModel } from "../../execution/model-tier.js";
 
 const YAML_FILE_PATTERN = /\.ya?ml$/;
 
@@ -82,7 +83,7 @@ export function toOpenCodeAgentFiles(profile, agentDefinitions) {
     return {
       role,
       relativePath: `.opencode/agent/harness-${role}.md`,
-      content: renderOpenCodeAgent(profile.name, role, assignment, definition)
+      content: renderOpenCodeAgent(profile.name, role, assignment, definition, profile.model_tiers)
     };
   });
 }
@@ -103,16 +104,42 @@ export function describeRoleAssignments(profile, roles) {
       return `- ${role}: 既定（プロファイル未割当）`;
     }
 
-    return `- ${role}: ${assignment.provider}/${assignment.model} (${assignment.mode})`;
+    const model = resolveAssignmentModel(profile, role, assignment);
+    const tierSuffix = model.tier !== undefined ? `tier: ${model.tier}, ` : "";
+    return `- ${role}: ${model.provider}/${model.model} (${tierSuffix}${assignment.mode})`;
   });
 }
 
-function renderOpenCodeAgent(profileName, role, assignment, definition) {
+/**
+ * Resolves an assignment to its concrete provider/model. Tier-based
+ * assignments look the model up in the profile's model_tiers; direct
+ * assignments carry their provider/model inline. The returned object
+ * carries the tier name when the assignment used one.
+ *
+ * @param {import("./contracts.js").RegisteredProfile} profile
+ * @param {string} role
+ * @param {import("./contracts.js").ProfileAssignment} assignment
+ * @returns {{ provider: string, model: string, tier?: string }}
+ */
+export function resolveAssignmentModel(profile, role, assignment) {
+  if (assignment.tier !== undefined) {
+    const tier = resolveTierModel(profile.model_tiers, assignment.tier);
+    if (!tier) {
+      throw new Error(`Profile "${profile.name}" assigns role "${role}" unknown tier "${assignment.tier}".`);
+    }
+    return { provider: tier.provider, model: tier.model, tier: assignment.tier };
+  }
+
+  return { provider: assignment.provider, model: assignment.model };
+}
+
+function renderOpenCodeAgent(profileName, role, assignment, definition, modelTiers) {
+  const model = resolveAssignmentModel({ name: profileName, model_tiers: modelTiers }, role, assignment);
   const lines = [
     "---",
     `description: Harness Engineering role: ${role} (profile: ${profileName})`,
     "mode: all",
-    `model: ${assignment.provider}/${assignment.model}`,
+    `model: ${model.provider}/${model.model}`,
     ...renderOpenCodeToolAccess(role, assignment, definition)
   ];
 
