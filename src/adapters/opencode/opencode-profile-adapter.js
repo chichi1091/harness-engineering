@@ -1,6 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse } from "yaml";
+import { resolveEffectivePermissions, validatePermissions } from "../../permission/permissions.js";
 
 const YAML_FILE_PATTERN = /\.ya?ml$/;
 
@@ -111,16 +112,41 @@ function renderOpenCodeAgent(profileName, role, assignment, definition) {
     "---",
     `description: Harness Engineering role: ${role} (profile: ${profileName})`,
     "mode: all",
-    `model: ${assignment.provider}/${assignment.model}`
+    `model: ${assignment.provider}/${assignment.model}`,
+    ...renderOpenCodeToolAccess(role, assignment, definition)
   ];
-
-  if (assignment.mode === "readonly") {
-    lines.push("tools:", "  write: false", "  edit: false");
-  }
 
   lines.push("---", "", renderOpenCodeAgentPrompt(role, definition));
 
   return lines.join("\n");
+}
+
+/**
+ * Converts the effective permissions into OpenCode tool configuration.
+ * The effective set is the role's canonical declaration narrowed by the
+ * profile mode: a readonly assignment can deny a tool but never re-enable
+ * one the role denies, so prompt-level constraints become runtime
+ * enforcement regardless of what the profile says.
+ *
+ * @param {string} role
+ * @param {import("./contracts.js").ProfileAssignment} assignment
+ * @param {import("./contracts.js").AgentDefinition} definition
+ * @returns {readonly string[]}
+ */
+function renderOpenCodeToolAccess(role, assignment, definition) {
+  const errors = validatePermissions(definition.permissions);
+  if (errors.length > 0) {
+    throw new Error(`Agent definition "${role}" declares invalid permissions: ${errors.join(" ")}`);
+  }
+
+  const effective = resolveEffectivePermissions(definition.permissions, assignment.mode);
+
+  return [
+    "tools:",
+    `  read: ${effective.read === "allow"}`,
+    `  edit: ${effective.edit === "allow"}`,
+    `  write: ${effective.write === "allow"}`
+  ];
 }
 
 /**

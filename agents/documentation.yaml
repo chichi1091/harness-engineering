@@ -2,6 +2,10 @@ name: documentation
 purpose: 変更内容を利用者と保守者が理解できる文書へ反映する
 capabilities:
   - technical_writing
+permissions:
+  read: allow
+  edit: allow
+  write: allow
 responsibilities:
   - 利用方法、設計、仕様、変更履歴の必要な更新を判断する
   - 実装と矛盾しない文書を作成または更新する

@@ -19,6 +19,7 @@ Harness Engineering の変更履歴。このファイルは v0.1.0-alpha のリ�
 
 ### Added
 
+- Agentのconstraintsをランタイムの実Permissionへ変換。共通Permissionモデル（`read`/`edit`/`write` × `allow`/`deny`）を正本 `agents/*.yaml` の `permissions` 宣言として導入し、Explorer/Reviewer/Architectはランタイム上でもread-onlyに（「リポジトリを変更してはならない」「実装変更は行わない」の機械強制）。`src/permission/permissions.js` が宣言検証と実効権限の合成を担い、Profileの `readonly` modeは権限を狭めるのみで緩めることは不可。OpenCode Adapterは実効権限を生成Agent定義の `tools:` ブロックへ変換
 - OpenCode AdapterによるAgent定義の生成を完成。`loadAgentDefinitions` が正本 `agents/*.yaml` を読み込み、`toOpenCodeAgentFiles` が役割ごとの目的・責務・制約・完了条件を `.opencode/agent/harness-<役割名>.md` のPrompt本文へ埋め込む（モデル・権限はProfileから反映）。対応する役割定義の欠落や形式不正は生成時に拒否する
 - Riskに応じたWorkflow選択。Requestの `risk`（`low`/`medium`/`high`、省略時は保守側の既定 `high`）とWorkflowの `routing.risk` 宣言により、軽微な変更はArchitect/Explorer/Reviewer/Documentationを省略した軽量Workflowへ、通常・重大な変更は従来どおりフルWorkflowへルーティングされる。同一intent・同一優先度でもriskが素分割されていればWorkflowの並存を許容するようRegistry検証を強化。`complexity` も検証と記録（Delegation Planの `requestProfile`）に対応し、Intent × Risk × Complexity による選択は将来フェーズ
 - 軽微変更向けWorkflow `workflows/lightweight-change.yaml`（intents: feature / bug-fix、risk: [low]、implement→testの最小工程）と入口コマンド `commands/lightweight.md`
