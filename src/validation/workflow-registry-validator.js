@@ -1,4 +1,11 @@
 /**
+ * Risk levels a routing may declare. Workflows serving the same intent at
+ * the same priority are only compatible when their declared risk levels do
+ * not overlap.
+ */
+const RISK_VOCABULARY = new Set(["low", "medium", "high"]);
+
+/**
  * Validates the semantic relationships in a loaded Workflow Registry.
  * It is pure: filesystem reads and YAML parsing belong to the caller.
  *
@@ -38,13 +45,19 @@ export function validateWorkflowRegistry(workflows, { agentPaths, commandPaths, 
 }
 
 /**
- * Rejects registries where two workflows route the same intent with the same
- * effective priority. The Decision Engine blocks such intents at runtime
- * ("ambiguous_workflow"), so validation must catch the conflict first.
+ * Rejects registries where two workflows route the same intent with the
+ * same effective priority and overlapping risk coverage. The Decision
+ * Engine blocks such intents at runtime ("ambiguous_workflow"), so
+ * validation must catch the conflict first. Workflows that partition an
+ * intent by risk (for example risk: [low] and risk: [medium, high]) are
+ * compatible and allowed.
  * Effective priority mirrors the engine's `routing.priority ?? 0` semantics.
+ * A workflow without a routing.risk declaration serves every risk level and
+ * therefore overlaps with any other routing of the same intent.
  */
 function validateRoutingConflicts(workflows, errors) {
   const claimsByIntent = new Map();
+  const reportedPairs = new Set();
 
   for (const workflow of workflows) {
     // Malformed routing is already reported by the per-workflow checks above;
@@ -53,31 +66,51 @@ function validateRoutingConflicts(workflows, errors) {
 
     const label = workflowLabel(workflow);
     const priority = workflow.routing.priority ?? 0;
+    const risks = riskCoverage(workflow.routing.risk);
 
     for (const intent of workflow.routing.intents) {
       if (typeof intent !== "string" || intent.trim() === "") continue;
 
-      let claimsByPriority = claimsByIntent.get(intent);
-      if (claimsByPriority === undefined) {
-        claimsByPriority = new Map();
-        claimsByIntent.set(intent, claimsByPriority);
+      let claims = claimsByIntent.get(intent);
+      if (claims === undefined) {
+        claims = [];
+        claimsByIntent.set(intent, claims);
       }
 
-      const firstClaimant = claimsByPriority.get(priority);
-      // Duplicate intents within one workflow resolve to that workflow and
-      // are harmless at runtime.
-      if (firstClaimant === workflow) continue;
+      for (const claim of claims) {
+        if (claim.workflow === workflow) continue;
+        if (claim.priority !== priority) continue;
+        if (!coverageOverlaps(claim.risks, risks)) continue;
 
-      if (firstClaimant) {
+        const pairKey = `${intent}/${priority}/${claim.workflow.name ?? workflowLabel(claim.workflow)}/${workflow.name ?? label}`;
+        if (reportedPairs.has(pairKey)) continue;
+        reportedPairs.add(pairKey);
+
         errors.push(
-          `${label}: routing intent "${intent}" is also routed by ${workflowLabel(firstClaimant)} with the same priority (${priority}).`
+          `${label}: routing intent "${intent}" is also routed by ${workflowLabel(claim.workflow)} with the same priority (${priority}).`
         );
-        continue;
       }
 
-      claimsByPriority.set(priority, workflow);
+      claims.push({ workflow, risks, priority });
     }
   }
+}
+
+/**
+ * A routing without a declared risk list is a wildcard covering every risk
+ * level, including malformed inputs, so that risk validation is reported by
+ * the per-workflow checks rather than by conflict detection.
+ */
+function riskCoverage(declared) {
+  if (!Array.isArray(declared)) return null;
+  const levels = declared.filter((level) => RISK_VOCABULARY.has(level));
+  if (levels.length !== declared.length || levels.length === 0) return null;
+  return levels;
+}
+
+function coverageOverlaps(left, right) {
+  if (left === null || right === null) return true;
+  return left.some((level) => right.includes(level));
 }
 
 function validateRouting(routing, label, errors) {
@@ -88,9 +121,28 @@ function validateRouting(routing, label, errors) {
 
   validateNonEmptyStringArray(routing.intents, `${label}: routing.intents`, errors);
   validateStringArray(routing.required_request_fields, `${label}: routing.required_request_fields`, errors);
+  validateRiskLevels(routing.risk, `${label}: routing.risk`, errors);
 
   if (typeof routing.priority !== "number" || !Number.isFinite(routing.priority)) {
     errors.push(`${label}: routing.priority must be a finite number.`);
+  }
+}
+
+/**
+ * routing.risk is optional; when present it must list levels from the fixed
+ * risk vocabulary. An absent declaration means the workflow serves every
+ * risk level.
+ */
+function validateRiskLevels(risk, label, errors) {
+  if (risk === undefined) return;
+  if (!Array.isArray(risk) || risk.length === 0) {
+    errors.push(`${label} must be a non-empty array of risk levels.`);
+    return;
+  }
+  for (const level of risk) {
+    if (typeof level !== "string" || !RISK_VOCABULARY.has(level)) {
+      errors.push(`${label} contains unknown risk level "${String(level)}". Must be one of low, medium, high.`);
+    }
   }
 }
 

@@ -12,9 +12,21 @@
 
 複数の Agent を協調させる YAML 定義。工程順、入出力、各工程のゲート、差し戻し先を持つ。
 
-`routing` には、Decision Engineが選択に使う `intents`、`required_request_fields`、`priority` を記載する。
+`routing` には、Decision Engineが選択に使う `intents`、`required_request_fields`、`priority`、`risk` を記載する。
+
+`risk` はWorkflowが対応するリスク水準（`low` / `medium` / `high`）の宣言である。未宣言の場合は全リスクに対応する。同一intent・同一優先度でも、宣言したriskが素分割されていれば複数のWorkflowが並存できる（例: `risk: [low]` の軽量Workflowと `risk: [medium, high]` のフルWorkflow）。素分割でない組はRegistry検証が拒否する。
 
 MVPの標準intentは `feature`、`bug-fix`、`review`、`design`、`refactor`、`research` である。追加のintentはWorkflow Registryに宣言することで、Decision Engine本体を変更せずに選択対象へ加えられる。
+
+## Risk
+
+依頼のリスク水準を表す語彙（`low` / `medium` / `high`）。Requestの `risk` で指定し、Decision Engineはリスクに対応するWorkflowを選択する。
+
+- Requestで `risk` を省略した場合は `high` として扱う。軽量な工程で実行するには依頼側の明示が必要で、既存の依頼は従来どおりフルWorkflowを実行する
+- `risk: low` の依頼はArchitect/Explorer/Reviewer/Documentationを省略した軽量Workflow（`workflows/lightweight-change.yaml`）にルーティングされる
+- `risk: medium` / `high` では従来どおりフルWorkflowを選択する
+- `complexity` も同じ語彙でRequestに指定できる。MVPでは検証と記録のみで選択には影響しない（Intent × Risk × Complexity による選択は将来フェーズ）
+- 実効riskとcomplexityの記録はDelegation Planの `requestProfile` を参照する
 
 ## DecisionContext
 
@@ -22,7 +34,7 @@ Decision Engineに渡す唯一の入力。ユーザー要求と、外部で読�
 
 ## Delegation Plan
 
-Decision Engineが返す唯一の出力。MVPでは、状態、選択Workflow、不足情報、選択不能の根拠を表す。Agentへの実際の委譲・CLI実行は含まない。
+Decision Engineが返す唯一の出力。MVPでは、状態、選択Workflow、不足情報、選択不能の根拠、リスクと複雑さの記録（`requestProfile`）を表す。Agentへの実際の委譲・CLI実行は含まない。
 
 ## Severity
 

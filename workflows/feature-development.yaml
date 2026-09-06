@@ -7,6 +7,9 @@ routing:
   required_request_fields:
     - goal
   priority: 100
+  risk:
+    - medium
+    - high
 steps:
   - id: design
     agent: agents/architect.yaml

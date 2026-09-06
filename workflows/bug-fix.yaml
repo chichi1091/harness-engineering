@@ -8,6 +8,9 @@ routing:
     - expected_behavior
     - actual_behavior
   priority: 100
+  risk:
+    - medium
+    - high
 steps:
   - id: triage
     agent: agents/architect.yaml

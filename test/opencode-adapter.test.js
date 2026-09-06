@@ -94,7 +94,9 @@ for (const { intent, request, workflow } of [
   { intent: "review", request: { review_target: "現在の変更差分" }, workflow: "review" },
   { intent: "design", request: { goal: "通知設定を追加する" }, workflow: "design" },
   { intent: "refactor", request: { target: "認証モジュール", goal: "重複を減らす" }, workflow: "refactor" },
-  { intent: "research", request: { question: "キャッシュ方式の選択肢は何か" }, workflow: "research" }
+  { intent: "research", request: { question: "キャッシュ方式の選択肢は何か" }, workflow: "research" },
+  { intent: "feature", request: { goal: "READMEのtypoを修正する", risk: "low" }, workflow: "lightweight-change" },
+  { intent: "bug-fix", request: { goal: "設定読込時のnullチェックを追加する", risk: "low" }, workflow: "lightweight-change" }
 ]) {
   test(`Workflow YAML Registryから${intent}を${workflow}へルーティングする`, async () => {
     const registry = await loadWorkflowRegistry(projectWorkflowsDirectory);

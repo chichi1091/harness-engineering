@@ -107,14 +107,90 @@ test("同一intentでも優先度が異なる場合は許容する", () => {
   assert.deepEqual(validateWorkflowRegistry([first, second], knownPaths), []);
 });
 
-test("同一intent・同一優先度の3Workflowでは後続それぞれに1件報告する", () => {
+test("同一intent・同一優先度の3Workflowでは衝突するペアごとに報告する", () => {
   const first = validWorkflow();
   const second = validWorkflow({ sourcePath: "workflows/design-v2.yaml", name: "design-v2" });
   const third = validWorkflow({ sourcePath: "workflows/design-v3.yaml", name: "design-v3" });
 
+  // 3つともrisk未宣言（ワイルドカード）なので、組合せはすべて衝突する。
   assert.deepEqual(validateWorkflowRegistry([first, second, third], knownPaths), [
     'workflows/design-v2.yaml: routing intent "design" is also routed by workflows/design.yaml with the same priority (100).',
-    'workflows/design-v3.yaml: routing intent "design" is also routed by workflows/design.yaml with the same priority (100).'
+    'workflows/design-v3.yaml: routing intent "design" is also routed by workflows/design.yaml with the same priority (100).',
+    'workflows/design-v3.yaml: routing intent "design" is also routed by workflows/design-v2.yaml with the same priority (100).'
+  ]);
+});
+
+test("同一intent・同一優先度でもriskが素分割されていれば許容する", () => {
+  const full = validWorkflow({
+    routing: {
+      intents: ["design"],
+      required_request_fields: ["goal"],
+      priority: 100,
+      risk: ["medium", "high"]
+    }
+  });
+  const lightweight = validWorkflow({
+    sourcePath: "workflows/design-lite.yaml",
+    name: "design-lite",
+    routing: {
+      intents: ["design"],
+      required_request_fields: ["goal"],
+      priority: 100,
+      risk: ["low"]
+    }
+  });
+
+  assert.deepEqual(validateWorkflowRegistry([full, lightweight], knownPaths), []);
+});
+
+test("同一intent・同一優先度でriskが重なるWorkflowの組を拒否する", () => {
+  const lowA = validWorkflow({
+    routing: { intents: ["design"], required_request_fields: ["goal"], priority: 100, risk: ["low"] }
+  });
+  const lowB = validWorkflow({
+    sourcePath: "workflows/design-low-copy.yaml",
+    name: "design-low-copy",
+    routing: { intents: ["design"], required_request_fields: ["goal"], priority: 100, risk: ["low", "medium"] }
+  });
+
+  assert.deepEqual(validateWorkflowRegistry([lowA, lowB], knownPaths), [
+    'workflows/design-low-copy.yaml: routing intent "design" is also routed by workflows/design.yaml with the same priority (100).'
+  ]);
+});
+
+test("risk未宣言のWorkflowはワイルドカードとしてすべてのriskと衝突する", () => {
+  const wildcard = validWorkflow();
+  const declared = validWorkflow({
+    sourcePath: "workflows/design-lite.yaml",
+    name: "design-lite",
+    routing: { intents: ["design"], required_request_fields: ["goal"], priority: 100, risk: ["low"] }
+  });
+
+  assert.deepEqual(validateWorkflowRegistry([wildcard, declared], knownPaths), [
+    'workflows/design-lite.yaml: routing intent "design" is also routed by workflows/design.yaml with the same priority (100).'
+  ]);
+});
+
+test("routing.riskの形式と語彙を検証する", () => {
+  const nonArray = validWorkflow();
+  nonArray.routing.risk = "low";
+  const empty = validWorkflow({
+    sourcePath: "workflows/empty-risk.yaml",
+    name: "empty-risk",
+    routing: { intents: ["empty-risk"], required_request_fields: ["goal"], priority: 100 }
+  });
+  empty.routing.risk = [];
+  const unknown = validWorkflow({
+    sourcePath: "workflows/unknown-risk.yaml",
+    name: "unknown-risk",
+    routing: { intents: ["unknown-risk"], required_request_fields: ["goal"], priority: 100 }
+  });
+  unknown.routing.risk = ["minimal"];
+
+  assert.deepEqual(validateWorkflowRegistry([nonArray, empty, unknown], knownPaths), [
+    "workflows/design.yaml: routing.risk must be a non-empty array of risk levels.",
+    "workflows/empty-risk.yaml: routing.risk must be a non-empty array of risk levels.",
+    'workflows/unknown-risk.yaml: routing.risk contains unknown risk level "minimal". Must be one of low, medium, high.'
   ]);
 });
 
