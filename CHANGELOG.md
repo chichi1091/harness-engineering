@@ -19,6 +19,7 @@ Harness Engineering の変更履歴。このファイルは v0.1.0-alpha のリ�
 
 ### Added
 
+- OpenCode AdapterによるAgent定義の生成を完成。`loadAgentDefinitions` が正本 `agents/*.yaml` を読み込み、`toOpenCodeAgentFiles` が役割ごとの目的・責務・制約・完了条件を `.opencode/agent/harness-<役割名>.md` のPrompt本文へ埋め込む（モデル・権限はProfileから反映）。対応する役割定義の欠落や形式不正は生成時に拒否する
 - Riskに応じたWorkflow選択。Requestの `risk`（`low`/`medium`/`high`、省略時は保守側の既定 `high`）とWorkflowの `routing.risk` 宣言により、軽微な変更はArchitect/Explorer/Reviewer/Documentationを省略した軽量Workflowへ、通常・重大な変更は従来どおりフルWorkflowへルーティングされる。同一intent・同一優先度でもriskが素分割されていればWorkflowの並存を許容するようRegistry検証を強化。`complexity` も検証と記録（Delegation Planの `requestProfile`）に対応し、Intent × Risk × Complexity による選択は将来フェーズ
 - 軽微変更向けWorkflow `workflows/lightweight-change.yaml`（intents: feature / bug-fix、risk: [low]、implement→testの最小工程）と入口コマンド `commands/lightweight.md`
 - WorkflowのRetry Policy（`retry_policy`）。`on_failure` を持つステップに再試行上限（`max_attempts`、総実行回数・初回含む）を必須化し、再試行条件（`retry_on`、ReviewerのSeverity語彙）を指定できる。上限到達時や非対象の失敗時は差し戻しを行わず未解決事項を利用者へ返すため、Developer ⇄ Reviewer/Test の無限ループが構造的に防止される

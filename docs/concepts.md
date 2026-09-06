@@ -62,6 +62,7 @@ Test/Reviewなど、失敗時に差し戻しを行うステップ（`on_failure`
 - 役割名は `agents/*.yaml` の名前（ファイル名の拡張子を除いたもの）と一致しなければならない
 - 割当は部分集合でよい。未割当の役割は実行環境の既定に従う
 - `mode` は権限の目安である。`readonly` は書込系ツールを無効化し、`write` は実行環境の既定権限に従う
+- OpenCode Adapter は `agents/*.yaml` の目的・責務・制約・完了条件を `.opencode/agent/harness-<役割名>.md` のPrompt本文へ埋め込んで生成する。`harness-` 接頭辞は生成物であることを示し、生成物は手書きしない（正本は常に `agents/*.yaml` と Profile）
 - 意味検証は `npm run validate:profiles` が担う
 
 ## Artifact
