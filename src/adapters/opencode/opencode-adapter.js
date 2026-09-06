@@ -97,8 +97,11 @@ export function toOpenCodeCommand(delegationPlan, workflowRegistry, profile = nu
 
 function renderOpenCodeCommand(workflow, profile) {
   const steps = (workflow.steps ?? []).map((step) => {
+    const inputs = (step.input ?? [])
+      .map((entry) => (typeof entry === "object" && entry !== null ? entry.summary ?? entry.artifact : entry))
+      .join("、");
     const outputs = (step.output ?? []).join("、");
-    return `- ${step.id}: ${step.agent} を読み、${outputs}を成果物として残す。`;
+    return `- ${step.id}: ${step.agent} を読み、${inputs}を入力として、${outputs}を成果物として残す。`;
   });
 
   const lines = [
@@ -112,6 +115,7 @@ function renderOpenCodeCommand(workflow, profile) {
     `- Workflow: \`${workflow.name}\``,
     `- 定義ファイル: \`${workflow.sourcePath}\``,
     "",
+    ...contextPolicyLines(),
     "## Steps",
     ...steps
   ];
@@ -165,6 +169,21 @@ function renderArtifactContractLines(workflow) {
   }
 
   return [...types].sort().map(describeArtifactType).filter((line) => line !== "");
+}
+
+/**
+ * The context handoff policy applies to every delegation: agents exchange
+ * structured artifacts, never full conversation histories, and fetch
+ * additional context selectively (issue #9). Unconditional by design —
+ * the policy is not workflow-dependent.
+ */
+function contextPolicyLines() {
+  return [
+    "## Context policy",
+    "前のAgentの会話履歴を引き継がないでください。Agent間の受け渡しは、Workflowに指定された構造化Artifactを基本単位とします。",
+    "Artifactだけでは判断できない場合にのみ、判断に必要なファイルや差分を追加で取得してください。リポジトリ全体を最初から再探索しないでください。",
+    ""
+  ];
 }
 
 /**

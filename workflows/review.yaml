@@ -35,6 +35,7 @@ steps:
       - artifact: exploration-result
         summary: 調査報告
       - 影響範囲
+      - 変更差分
     output:
       - artifact: review-result
         summary: レビュー結果

@@ -36,11 +36,16 @@ const SCHEMAS = {
     }
   },
   "exploration-result": {
-    summary: "findings(topic, evidence)",
+    summary: "findings(topic, evidence) / relevant_files",
     validate(artifact) {
       const errors = [];
       const findings = requireList(artifact, "findings", errors);
       requireItemFields(findings, ["topic", "evidence"], "findings", errors);
+      // The exploration result is the handoff unit for the next agent: it
+      // must name the files it looked at so downstream agents can fetch
+      // additional context selectively instead of re-exploring.
+      requireStringList(artifact, "relevant_files", errors, "a non-empty list of file paths");
+      optionalStringList(artifact, "relevant_symbols", errors, "a list of symbol names");
       return errors;
     }
   },
@@ -157,6 +162,31 @@ function optionalList(artifact, field, errors) {
     return undefined;
   }
   return value;
+}
+
+/**
+ * A required list whose items must be non-empty strings (the list itself
+ * must not be empty either).
+ */
+function requireStringList(artifact, field, errors, expectation) {
+  if (!isTypedRecord(artifact)) return;
+  const value = artifact[field];
+  if (!Array.isArray(value) || value.length === 0 || !value.every(isNonEmptyString)) {
+    errors.push(`${artifact.type}: "${field}" must be ${expectation}.`);
+  }
+}
+
+/**
+ * An optional list whose items must be non-empty strings when present
+ * (an empty list is allowed).
+ */
+function optionalStringList(artifact, field, errors, expectation) {
+  if (!isTypedRecord(artifact)) return;
+  const value = artifact[field];
+  if (value === undefined) return;
+  if (!Array.isArray(value) || !value.every(isNonEmptyString)) {
+    errors.push(`${artifact.type}: "${field}" must be ${expectation}.`);
+  }
 }
 
 function optionalArray(owner, field, errors, label) {

@@ -64,6 +64,19 @@ Workflowが消費できるトークン量の上限。正本は各Workflow YAML�
 - 判定は実行前チェック（`decideStepBudget`）。モデル呼び出しは中断できないため、実際の消費を記録し、次の実行前に上限に達していれば追加の呼び出しを行わない。総額の判定がステップ上限より先に行われる
 - 予算超過時はWorkflowを停止し（再試行は不可 — 予算超過での追加消費は予算に矛盾する）、`buildBudgetExhaustionArtifact` が完了済み・未完了・未解決事項を含む成果物を利用者へ返す。OpenCode AdapterはDelegationコマンドの Token budget セクションで上限と停止ルールを次のAgentへ伝える
 
+## Context Handoff
+
+Agent間のContext受け渡しの基本方針。重複したToken消費（同じコードや会話履歴を各Agentが読み直す）を抑えるため、**会話履歴やコード全文ではなく構造化Artifactを基本の受け渡し単位**とする。
+
+```
+Agent A → 小さな構造化Artifact → Agent B → 必要な情報のみ追加取得
+```
+
+- 次のAgentは前のAgentの会話履歴を引き継がない。受け取るのはWorkflowの `input` に指定されたArtifact（Issue #7の共通Schema）と利用者の依頼だけ
+- Explorerは調査結果に `relevant_files`（必須）と `relevant_symbols`（任意）を含めて返す。後続のAgentはここで指されたファイルだけを追加取得でき、リポジトリ全体の再探索が不要になる
+- Reviewerは受入条件、設計の要約、実装結果、テスト結果、**変更差分**を入力としてdiff中心に判断する。正本 `agents/reviewer.yaml` の制約に「Artifactだけでは判断できない場合にのみ必要なファイルを追加取得する」と明記され、正本Workflowのreviewステップは `変更差分` を入力に宣言する
+- OpenCode Adapterは全Delegationコマンドに **Context policy** セクションを常時レンダリングし、会話履歴の引継ぎ禁止と追加取得の原則を実行時に強制する
+
 ## Execution Profile
 
 実行環境ごとに役割とモデルの割当を定義する `profiles/` のYAML。`assignments` は役割名を鍵とし、`provider`、`model`、`mode`（`readonly` または `write`）を持つ。
@@ -96,7 +109,7 @@ Agent間で受け渡す構造化成果物は共通Schema（`src/artifacts/artifa
 | 型 | 生成役割 | 型別必須フィールド |
 |---|---|---|
 | `design-result` | Architect | `acceptance_criteria`(id, description) |
-| `exploration-result` | Explorer | `findings`(topic, evidence) |
+| `exploration-result` | Explorer | `findings`(topic, evidence)、`relevant_files`(関連ファイルの列挙。`relevant_symbols` は任意) |
 | `implementation-result` | Developer | `changed_files`(path, reason) |
 | `test-result` | Test Engineer | `tests`(executed(name, outcome) または pending(name, reason) のどちらか非空) |
 | `review-result` | Reviewer | `decision`(approve/reject)、`findings`(severity, location, problem) |

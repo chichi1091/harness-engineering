@@ -138,6 +138,32 @@ test("予算を持たないWorkflowのコマンドにToken budgetセクション
   assert.doesNotMatch(delegation.command?.content ?? "", /## Token budget/);
 });
 
+test("コマンドは全DelegationにContext policyセクションを含める", async () => {
+  const registry = await loadWorkflowRegistry(fixturesDirectory);
+  const delegation = createOpenCodeDelegation(
+    { intent: "feature", goal: "利用者が設定を保存できる" },
+    registry
+  );
+
+  const content = delegation.command?.content ?? "";
+  assert.match(content, /## Context policy/);
+  assert.match(content, /前のAgentの会話履歴を引き継がないでください/);
+  assert.match(content, /構造化Artifactを基本単位とします/);
+  assert.match(content, /リポジトリ全体を最初から再探索しないでください/);
+});
+
+test("reviewステップのコマンドに変更差分の入力を含める", async () => {
+  const registry = await loadWorkflowRegistry(projectWorkflowsDirectory);
+  const delegation = createOpenCodeDelegation(
+    { intent: "review", review_target: "現在の変更差分" },
+    registry
+  );
+
+  const content = delegation.command?.content ?? "";
+  assert.match(content, /- review: .*を読み、/);
+  assert.match(content, /変更差分/);
+});
+
 test("readyでないPlanはOpenCodeコマンドへ変換しない", async () => {
   const registry = await loadWorkflowRegistry(fixturesDirectory);
   const delegation = createOpenCodeDelegation({ intent: "feature" }, registry);
