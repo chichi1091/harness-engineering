@@ -1,0 +1,22 @@
+name: opencode-gpt-gemini
+assignments:
+  architect:
+    provider: google
+    model: gemini-pro
+    mode: readonly
+  explorer:
+    provider: google
+    model: gemini-flash
+    mode: readonly
+  developer:
+    provider: openai
+    model: gpt
+    mode: write
+  test-engineer:
+    provider: openai
+    model: gpt
+    mode: write
+  reviewer:
+    provider: google
+    model: gemini-pro
+    mode: readonly

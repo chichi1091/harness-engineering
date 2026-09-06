@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { placeOpenCodeCommand } from "../src/runtimes/opencode/opencode-executor.js";
+import { placeOpenCodeAgent, placeOpenCodeCommand } from "../src/runtimes/opencode/opencode-executor.js";
 
 const command = {
   relativePath: ".opencode/commands/harness-feature-development.md",
@@ -117,6 +117,57 @@ test(".opencodeディレクトリがシンボリックリンクの場合は配�
     await assert.rejects(
       placeOpenCodeCommand({ projectRoot, command }),
       /symbolic link/
+    );
+  });
+});
+
+const agentFile = {
+  role: "architect",
+  relativePath: ".opencode/agent/harness-architect.md",
+  content: "---\ndescription: Harness Engineering role: architect\n---\n"
+};
+
+test("Profile由来のagent定義を.opencode/agent/へ配置する", async () => {
+  await withTemporaryProject(async (projectRoot) => {
+    const result = await placeOpenCodeAgent({ projectRoot, file: agentFile });
+
+    assert.equal(result.action, "created");
+    assert.equal(
+      result.path,
+      join(projectRoot, ".opencode/agent/harness-architect.md")
+    );
+    assert.equal(await readFile(result.path, "utf8"), agentFile.content);
+  });
+});
+
+test("agent配置でも既定のerrorポリシーは既存ファイルを上書きしない", async () => {
+  await withTemporaryProject(async (projectRoot) => {
+    const targetPath = join(projectRoot, agentFile.relativePath);
+    await placeOpenCodeAgent({ projectRoot, file: agentFile });
+
+    await assert.rejects(
+      placeOpenCodeAgent({ projectRoot, file: { ...agentFile, content: "new content" } }),
+      { code: "EEXIST" }
+    );
+    assert.equal(await readFile(targetPath, "utf8"), agentFile.content);
+  });
+});
+
+test("agent配置でも配置先外へのパスを拒否する", async () => {
+  await withTemporaryProject(async (projectRoot) => {
+    await assert.rejects(
+      placeOpenCodeAgent({
+        projectRoot,
+        file: { ...agentFile, relativePath: ".opencode/commands/misplaced.md" }
+      }),
+      /\.opencode\/agent/
+    );
+    await assert.rejects(
+      placeOpenCodeAgent({
+        projectRoot,
+        file: { ...agentFile, relativePath: "../outside.md" }
+      }),
+      /\.opencode\/agent/
     );
   });
 });

@@ -4,8 +4,8 @@ OpenCode Executorは、OpenCode Adapterが返す `relativePath` と `content` �
 
 ## 責務
 
-- `.opencode/commands/` を必要に応じて作成する
-- Adapter出力のMarkdownコマンドをその直下へ書き込む
+- `.opencode/commands/` と `.opencode/agent/` を必要に応じて作成する
+- Adapter出力のMarkdownコマンドとagent定義をそれぞれの直下へ書き込む
 - 上書きポリシーを適用する
 - 配置先外へのパス、絶対パス、Markdown以外のファイルを拒否する
 
@@ -32,7 +32,7 @@ Executor: .opencode/commands/ へ配置
 
 ## インターフェース
 
-`placeOpenCodeCommand({ projectRoot, command, overwritePolicy })` は書込後に配置結果を返す。
+`placeOpenCodeCommand({ projectRoot, command, overwritePolicy })` と `placeOpenCodeAgent({ projectRoot, file, overwritePolicy })` は書込後に配置結果を返す。`placeOpenCodeAgent` はExecution Profile由来のagent定義（`.opencode/agent/`）を配置し、ポリシーと拒否規則はコマンド配置と共通である。
 
 ```text
 { path: 絶対配置先, action: created | overwritten }

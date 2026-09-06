@@ -41,12 +41,13 @@ Harness Engineering は、複数の AI を役割ごとに協調させ、ソフ�
 
 ## 品質ゲート
 
-Pull Requestでは、単体テスト、YAML構文検証、Workflow Registryの意味検証、`git diff --check` を自動実行します。ローカルでは次を実行できます。
+Pull Requestでは、単体テスト、YAML構文検証、Workflow Registryの意味検証、Profileの意味検証、`git diff --check` を自動実行します。ローカルでは次を実行できます。
 
 ```sh
 npm test
 npm run validate:yaml
 npm run validate:workflows
+npm run validate:profiles
 git diff --check
 ```
 
@@ -58,8 +59,9 @@ git diff --check
 ├── agents/          # 能力・責務・完了条件で定義した役割
 ├── commands/        # 利用者の依頼をワークフローへ結び付ける入口
 ├── workflows/       # 役割の順序、入出力、ゲート
+├── profiles/        # 実行環境ごとの役割→モデル割当（Execution Profile）
 ├── src/decision-engine/ # Pure FunctionとしてのWorkflow選択
-├── src/adapters/opencode/ # OpenCode向けRegistry読込・Plan変換（CLI非実行）
+├── src/adapters/opencode/ # OpenCode向けRegistry・Profile読込とPlan変換（CLI非実行）
 ├── src/runtimes/opencode/ # OpenCodeコマンド配置（CLI非実行）
 ├── test/             # Decision Engineの単体テスト
 └── docs/            # 設計と用語

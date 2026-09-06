@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { parse } from "yaml";
 
 const YAML_FILE_PATTERN = /\.ya?ml$/;
-const VALIDATION_ROOTS = [".github", "agents", "workflows", "test/fixtures"];
+const VALIDATION_ROOTS = [".github", "agents", "profiles", "workflows", "test/fixtures"];
 
 const yamlFiles = await collectYamlFiles(VALIDATION_ROOTS);
 const failures = [];

@@ -24,6 +24,16 @@ Decision Engineに渡す唯一の入力。ユーザー要求と、外部で読�
 
 Decision Engineが返す唯一の出力。MVPでは、状態、選択Workflow、不足情報、選択不能の根拠を表す。Agentへの実際の委譲・CLI実行は含まない。
 
+## Execution Profile
+
+実行環境ごとに役割とモデルの割当を定義する `profiles/` のYAML。`assignments` は役割名を鍵とし、`provider`、`model`、`mode`（`readonly` または `write`）を持つ。
+
+- 正本の Agent 定義はモデル情報を持たない。実行時の割当は Profile だけが担う
+- 役割名は `agents/*.yaml` の名前（ファイル名の拡張子を除いたもの）と一致しなければならない
+- 割当は部分集合でよい。未割当の役割は実行環境の既定に従う
+- `mode` は権限の目安である。`readonly` は書込系ツールを無効化し、`write` は実行環境の既定権限に従う
+- 意味検証は `npm run validate:profiles` が担う
+
 ## Artifact
 
 工程間で渡す成果物。MVP ではファイル形式を固定せず、会話・PR・Issue・リポジトリ上の文書など、実行環境に適した場所に残す。内容は Agent 定義の `outputs` と `done_when` に従う。

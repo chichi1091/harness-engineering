@@ -39,3 +39,15 @@ Adapterは今回、`.opencode/commands/` へファイルを書き込まず、`op
 relativePath: .opencode/commands/harness-<workflow>.md
 content: OpenCodeのfrontmatter付きMarkdown
 ```
+
+## Execution Profile
+
+OpenCode AdapterはExecution Profile（`profiles/*.yaml`）を解釈し、次の2つの形で参照する。
+
+1. **Agent定義の生成**: `toOpenCodeAgentFiles(profile)` は割当済み役割ごとに `.opencode/agent/harness-<role>.md` の内容を値として返す。
+   - frontmatterの `model: <provider>/<model>` に割当を反映する
+   - OpenCodeのエージェント種別は `mode: all`（primary/subagent両用）とする。Profileの `mode` は権限を表す別概念である
+   - Profileの `mode: readonly` の役割は `tools.write` と `tools.edit` を無効化する。`write` は制限を入れない
+2. **Delegationコマンドへの反映**: `createOpenCodeDelegation(request, registry, profile)` は、選択されたWorkflowが使う役割の割当（`provider/model (mode)`）をコマンド本文の「Role assignments」に追記する。未割当の役割は「既定」として明示する。Profile未指定の場合は従来どおりのコマンドを生成する。
+
+`.opencode/agent/` への配置はExecutor（`placeOpenCodeAgent`）が担い、Adapterは書込を行わない。Profileの意味検証は `npm run validate:profiles` で行う。
