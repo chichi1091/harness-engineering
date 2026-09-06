@@ -10,11 +10,11 @@ assignments:
     mode: readonly
   developer:
     provider: openai
-    model: gpt
+    model: gpt-5.6-terra
     mode: write
   test-engineer:
     provider: openai
-    model: gpt
+    model: gpt-5.6-terra
     mode: write
   reviewer:
     provider: google

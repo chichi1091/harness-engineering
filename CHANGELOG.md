@@ -13,6 +13,10 @@ Harness Engineering の変更履歴。このファイルは v0.1.0-alpha のリ�
 - ReviewerのSeverity定義と機械的な承認基準。`agents/reviewer.yaml` に `severity`（blocker/high/medium/lowと判断基準）、`approval`（blocker/highが0件のときだけ承認）、`non_blocking`（cosmetic・スタイル・speculative refactoring・無関係な既存問題は原則Blockingにしない）、`output_format` を追加
 - `src/review/review-decision.js`: `decideReview`（指摘のSeverity集計による approve/reject/invalid 判定）と `validateReviewPolicy`（`report`/`ignore` への閾値設定を禁止し、MEDIUM/LOWだけでは差し戻されないことを構造的に保証）
 
+### Changed
+
+- Execution ProfileでGPTを利用する役割（developer、test-engineer）のモデルを `gpt-5.6-terra` に指定
+
 ## [0.1.0-alpha] - 2026-08-23
 
 最初のリリース候補(Release Candidate)。ランタイム非依存の共通定義正本、Workflow選択のPure Function、OpenCode向けの値生成・配置層、CI品質ゲートまでを含む。

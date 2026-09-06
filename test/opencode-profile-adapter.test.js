@@ -49,7 +49,7 @@ test("write権限の役割には書込制限を入れない", async () => {
   const [profile] = await loadProfiles(profilesDirectory);
   const developer = toOpenCodeAgentFiles(profile).find((file) => file.role === "developer");
 
-  assert.match(developer.content, /model: openai\/gpt/);
+  assert.match(developer.content, /model: openai\/gpt-5\.6-terra/);
   assert.doesNotMatch(developer.content, /write: false/);
 });
 
@@ -65,7 +65,7 @@ test("Delegationコマンドに選択Workflowの役割割当を反映する", as
 
   assert.match(delegation.command.content, /## Role assignments/);
   assert.match(delegation.command.content, /architect: google\/gemini-pro \(readonly\)/);
-  assert.match(delegation.command.content, /developer: openai\/gpt \(write\)/);
+  assert.match(delegation.command.content, /developer: openai\/gpt-5\.6-terra \(write\)/);
   assert.match(delegation.command.content, /documentation: 既定（プロファイル未割当）/);
 });
 
