@@ -148,11 +148,48 @@ function renderOpenCodeCommand(workflow, profile) {
     lines.push("", "## Token budget", ...tokenBudgetLines);
   }
 
+  const escalationPolicyLines = renderEscalationPolicyLines(profile);
+  if (escalationPolicyLines.length > 0) {
+    lines.push("", "## Escalation policy", ...escalationPolicyLines);
+  }
+
   if (profile) {
     lines.push("", "## Role assignments", ...describeRoleAssignments(profile, workflowRoles(workflow)));
   }
 
   return lines.join("\n");
+}
+
+/**
+ * Renders the profile's escalation policy: the condition → tier ladder
+ * with resolved concrete models, the workflow-wide limit, the budget
+ * continuation rule, and the execution-result recording duty. Escalation
+ * is opt-in per profile, so the section appears only when model_policy
+ * is declared.
+ *
+ * @param {import("./contracts.js").RegisteredProfile | null} profile
+ * @returns {readonly string[]}
+ */
+function renderEscalationPolicyLines(profile) {
+  const policy = profile?.model_policy;
+  if (!policy) return [];
+
+  const tierModel = (tierName) => {
+    const tier = profile.model_tiers?.[tierName];
+    return tier ? `${tierName} (${tier.provider}/${tier.model})` : tierName;
+  };
+
+  const lines = [
+    "確信を持って判断できない場合のみ、以下の条件に従って上位Model Tierへエスカレーションしてください。",
+    "",
+    ...policy.escalation.map((rule) => `- ${rule.when} → ${tierModel(rule.tier)}`),
+    "",
+    `エスカレーションはWorkflow全体で最大 ${policy.max_escalations} 回まで。Token budget は継続して適用され、エスカレーションによって消費はリセットされません。`,
+    "エスカレーションした場合は、その理由（条件名）と移動元・移動先のTierを成果物に記録してください。",
+    "上限に達しても判断できない場合はWorkflowを停止し、未解決事項をまとめて利用者へ返してください。"
+  ];
+
+  return lines;
 }
 
 function renderArtifactContractLines(workflow) {

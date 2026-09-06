@@ -79,11 +79,26 @@ Agent A → 小さな構造化Artifact → Agent B → 必要な情報のみ追�
 
 ## Execution Profile
 
-実行環境ごとに役割とモデルの割当を定義する `profiles/` のYAML。`assignments` は役割名を鍵とし、`provider`、`model`、`mode`（`readonly` または `write`）を持つ。
+実行環境ごとに役割とモデルの割当を定義する `profiles/` のYAML。`assignments` は役割名を鍵とし、`model_tiers` を参照する `tier` と `mode`（`readonly` または `write`）、または直接の `provider`・`model` と `mode` を持つ。
 
 - 正本の Agent 定義はモデル情報を持たない。実行時の割当は Profile だけが担う
 - 役割名は `agents/*.yaml` の名前（ファイル名の拡張子を除いたもの）と一致しなければならない
 - 割当は部分集合でよい。未割当の役割は実行環境の既定に従う
+
+## Model Tier
+
+役割と特定モデルを直接結び付けず、必要な能力・コストで分類した層。高コストモデルの常用を避け、必要な場合だけ上位層へ**Escalation**する。
+
+- `model_tiers` は名前付きの層（例: `economy` / `standard` / `premium`）を `provider`・`model` に解決する。`assignments` の `tier` がここを参照し、Adapterが実際のprovider/modelへ解決する
+- `model_policy.escalation` は条件付きの上位層への移動規則。条件語彙は `low_confidence`（確信して判断できない）と `critical_and_low_confidence`（重大かつ判断困難）の2つ。マッチングは**具体性の高い条件を優先**し、宣言順序に依存しない（`critical_and_low_confidence` が常に先）。どちらにも該当しない場合は現在のTierで継続する
+- `model_policy.max_escalations` はWorkflow全体のエスカレーション上限（必須）。上限に達しても確信できない場合はWorkflowを停止し、未解決事項を利用者へ返す（`buildEscalationExhaustionArtifact`）。Tier変更でToken Budgetを回避できないよう、**エスカレーションはToken Ledgerに触らず、予算は継続適用**される
+- エスカレーションの理由（条件名）と移動元・移動先Tierは実行結果に記録する。台帳レコード（`src/execution/model-tier.js` の `recordEscalation`）がその単一情報単位であり、OpenCode AdapterはEscalation policyセクションで条件・上限・記録義務を次のAgentへ伝える
+
+```
+Economy → 確信あり → 完了
+        → Low Confidence → Standard → 重大かつ判断困難 → Premium
+                                                     → それでも解決不能 → Human
+```
 - `mode` は権限の目安である。`readonly` は役割の Permission をさらに狭め、`write` は実行環境の既定権限に従う
 - OpenCode Adapter は `agents/*.yaml` の目的・責務・制約・完了条件を `.opencode/agent/harness-<役割名>.md` のPrompt本文へ埋め込んで生成する。`harness-` 接頭辞は生成物であることを示し、生成物は手書きしない（正本は常に `agents/*.yaml` と Profile）
 - 意味検証は `npm run validate:profiles` が担う

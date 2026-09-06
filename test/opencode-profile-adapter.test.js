@@ -10,6 +10,7 @@ import {
   describeRoleAssignments,
   loadAgentDefinitions,
   loadProfiles,
+  resolveAssignmentModel,
   toOpenCodeAgentFiles
 } from "../src/adapters/opencode/opencode-profile-adapter.js";
 import { validatePermissions } from "../src/permission/permissions.js";
@@ -26,7 +27,8 @@ test("Profile YAMLを読み込み、sourcePath付きRegistryを構築する", as
   assert.equal(profiles.length, 1);
   assert.equal(profiles[0].name, "opencode-gpt-gemini");
   assert.match(profiles[0].sourcePath, /opencode-gpt-gemini\.yaml$/);
-  assert.equal(profiles[0].assignments.architect.model, "gemini-pro");
+  assert.equal(profiles[0].assignments.architect.tier, "premium");
+  assert.equal(profiles[0].model_tiers.standard.model, "gpt-5.6-terra");
 });
 
 test("agents/*.yamlを読み込み、sourcePath付きRegistryを構築する", async () => {
@@ -236,8 +238,8 @@ test("Delegationコマンドに選択Workflowの役割割当を反映する", as
   );
 
   assert.match(delegation.command.content, /## Role assignments/);
-  assert.match(delegation.command.content, /architect: google\/gemini-pro \(readonly\)/);
-  assert.match(delegation.command.content, /developer: openai\/gpt-5\.6-terra \(write\)/);
+  assert.match(delegation.command.content, /architect: google\/gemini-pro \(tier: premium, readonly\)/);
+  assert.match(delegation.command.content, /developer: openai\/gpt-5\.6-terra \(tier: standard, write\)/);
   assert.match(delegation.command.content, /documentation: 既定（プロファイル未割当）/);
 });
 
@@ -252,8 +254,88 @@ test("Profile未指定の場合は従来どおりのコマンドを生成する"
   assert.doesNotMatch(delegation.command.content, /Role assignments/);
 });
 
+test("model_policyを持つProfileのコマンドにEscalation policyセクションを含める", async () => {
+  const [profile] = await loadProfiles(profilesDirectory);
+  const registry = await loadWorkflowRegistry(workflowsDirectory);
+
+  const delegation = createOpenCodeDelegation(
+    { intent: "feature", goal: "利用者が設定を保存できる" },
+    registry,
+    profile
+  );
+
+  const content = delegation.command.content;
+  assert.match(content, /## Escalation policy/);
+  assert.match(content, /確信を持って判断できない場合のみ、以下の条件に従って上位Model Tierへエスカレーションしてください/);
+  assert.match(content, /- critical_and_low_confidence → premium \(google\/gemini-pro\)/);
+  assert.match(content, /- low_confidence → standard \(openai\/gpt-5\.6-terra\)/);
+  assert.match(content, /エスカレーションはWorkflow全体で最大 2 回まで/);
+  assert.match(content, /Token budget は継続して適用され、エスカレーションによって消費はリセットされません/);
+  assert.match(content, /理由（条件名）と移動元・移動先のTierを成果物に記録してください/);
+  assert.match(content, /未解決事項をまとめて利用者へ返してください/);
+});
+
+test("model_policyを持たないProfileのコマンドにEscalation policyセクションを含めない", async () => {
+  const registry = await loadWorkflowRegistry(workflowsDirectory);
+  const profileWithoutPolicy = {
+    name: "direct",
+    assignments: {
+      developer: { provider: "openai", model: "gpt-5.6-terra", mode: "write" }
+    }
+  };
+
+  const delegation = createOpenCodeDelegation(
+    { intent: "feature", goal: "利用者が設定を保存できる" },
+    registry,
+    profileWithoutPolicy
+  );
+
+  assert.match(delegation.command.content, /## Role assignments/);
+  assert.doesNotMatch(delegation.command.content, /## Escalation policy/);
+});
+
 test("describeRoleAssignmentsは未割当roleを既定として示す", () => {
   const lines = describeRoleAssignments(null, ["architect"]);
 
   assert.deepEqual(lines, ["- architect: 既定（プロファイル未割当）"]);
+});
+
+test("Tier割当をprovider/modelへ解決する", async () => {
+  const [profile] = await loadProfiles(profilesDirectory);
+
+  const developer = resolveAssignmentModel(profile, "developer", profile.assignments.developer);
+  assert.deepEqual(developer, { provider: "openai", model: "gpt-5.6-terra", tier: "standard" });
+
+  const explorer = resolveAssignmentModel(profile, "explorer", profile.assignments.explorer);
+  assert.deepEqual(explorer, { provider: "google", model: "gemini-flash", tier: "economy" });
+
+  assert.throws(
+    () => resolveAssignmentModel(profile, "developer", { tier: "ultra", mode: "write" }),
+    /unknown tier "ultra"/
+  );
+});
+
+test("正本ProfileのTier解決は従来のモデル割当と一致する", async () => {
+  const files = await loadGeneratedAgentFiles();
+
+  const architect = files.find((file) => file.role === "architect");
+  assert.match(architect.content, /model: google\/gemini-pro/);
+
+  const developer = files.find((file) => file.role === "developer");
+  assert.match(developer.content, /model: openai\/gpt-5\.6-terra/);
+
+  const explorer = files.find((file) => file.role === "explorer");
+  assert.match(explorer.content, /model: google\/gemini-flash/);
+});
+
+test("正本Profileのmodel_policyは検証済みの語彙と上限を持つ", async () => {
+  const [profile] = await loadProfiles(profilesDirectory);
+
+  assert.deepEqual(
+    profile.model_policy.escalation.map((rule) => rule.when),
+    ["critical_and_low_confidence", "low_confidence"]
+  );
+  assert.equal(profile.model_policy.max_escalations, 2);
+  assert.ok(profile.model_tiers[profile.model_policy.escalation[0].tier]);
+  assert.ok(profile.model_tiers[profile.model_policy.escalation[1].tier]);
 });
