@@ -62,12 +62,30 @@ export interface OpenCodeAgentFile {
   content: string;
 }
 
+export interface AgentDefinition {
+  name: string;
+  purpose?: string;
+  responsibilities?: readonly string[];
+  constraints?: readonly string[];
+  done_when?: readonly string[];
+  [field: string]: unknown;
+}
+
+export interface RegisteredAgentDefinition extends AgentDefinition {
+  sourcePath: string;
+}
+
 export declare function loadProfiles(
   profilesDirectory: string
 ): Promise<readonly RegisteredProfile[]>;
 
+export declare function loadAgentDefinitions(
+  agentsDirectory: string
+): Promise<readonly RegisteredAgentDefinition[]>;
+
 export declare function toOpenCodeAgentFiles(
-  profile: RegisteredProfile
+  profile: RegisteredProfile,
+  agentDefinitions: readonly RegisteredAgentDefinition[]
 ): readonly OpenCodeAgentFile[];
 
 export declare function describeRoleAssignments(
