@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse } from "yaml";
 import { validateWorkflowRegistry } from "../src/validation/workflow-registry-validator.js";
+import { ARTIFACT_TYPES } from "../src/artifacts/artifact-schemas.js";
 
 const workflowFiles = await listFiles("workflows", /\.ya?ml$/);
 const [agentPaths, commandPaths] = await Promise.all([
@@ -27,7 +28,8 @@ const errors = [
   ...validateWorkflowRegistry(workflows, {
     agentPaths: new Set(agentPaths),
     commandPaths: new Set(commandPaths),
-    severityNames
+    severityNames,
+    artifactTypes: new Set(ARTIFACT_TYPES)
   })
 ];
 

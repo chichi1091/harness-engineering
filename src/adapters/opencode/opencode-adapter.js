@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { parse } from "yaml";
 import { decide } from "../../decision-engine/decision-engine.js";
+import { describeArtifactType } from "../../artifacts/artifact-schemas.js";
 import { describeRoleAssignments } from "./opencode-profile-adapter.js";
 
 const YAML_FILE_PATTERN = /\.ya?ml$/;
@@ -127,11 +128,38 @@ function renderOpenCodeCommand(workflow, profile) {
     );
   }
 
+  const artifactContractLines = renderArtifactContractLines(workflow);
+  if (artifactContractLines.length > 0) {
+    lines.push(
+      "",
+      "## Artifact contracts",
+      "artifact 型が指定された成果物は、対応する共通Schemaの必須フィールドを満たしてください。",
+      "",
+      ...artifactContractLines
+    );
+  }
+
   if (profile) {
     lines.push("", "## Role assignments", ...describeRoleAssignments(profile, workflowRoles(workflow)));
   }
 
   return lines.join("\n");
+}
+
+function renderArtifactContractLines(workflow) {
+  const types = new Set();
+
+  for (const step of workflow.steps ?? []) {
+    for (const entries of [step?.input, step?.output]) {
+      for (const entry of entries ?? []) {
+        if (typeof entry === "object" && entry !== null && typeof entry.artifact === "string") {
+          types.add(entry.artifact);
+        }
+      }
+    }
+  }
+
+  return [...types].sort().map(describeArtifactType).filter((line) => line !== "");
 }
 
 function renderRetryPolicyLines(workflow) {

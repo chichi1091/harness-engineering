@@ -12,6 +12,7 @@ import {
   recordAttempt
 } from "../src/execution/retry-policy.js";
 import { validateWorkflowRegistry } from "../src/validation/workflow-registry-validator.js";
+import { ARTIFACT_TYPES } from "../src/artifacts/artifact-schemas.js";
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -161,7 +162,8 @@ test("正本のWorkflow/Reviewer定義はRetry Policy機械規則と整合する
   const errors = validateWorkflowRegistry(workflows, {
     agentPaths: new Set(agentFilenames),
     commandPaths: new Set(commandFilenames),
-    severityNames: new Set(Object.keys(reviewer.severity))
+    severityNames: new Set(Object.keys(reviewer.severity)),
+    artifactTypes: new Set(ARTIFACT_TYPES)
   });
 
   assert.deepEqual(errors, []);

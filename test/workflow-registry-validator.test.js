@@ -5,7 +5,8 @@ import { validateWorkflowRegistry } from "../src/validation/workflow-registry-va
 const knownPaths = {
   agentPaths: new Set(["agents/architect.yaml", "agents/explorer.yaml"]),
   commandPaths: new Set(["commands/design.md"]),
-  severityNames: new Set(["blocker", "high", "medium", "low"])
+  severityNames: new Set(["blocker", "high", "medium", "low"]),
+  artifactTypes: new Set(["design-result", "exploration-result", "implementation-result", "test-result", "review-result"])
 };
 
 function validWorkflow(overrides = {}) {
@@ -31,7 +32,10 @@ function validWorkflow(overrides = {}) {
         id: "explore",
         agent: "agents/explorer.yaml",
         input: ["設計メモ"],
-        output: ["調査報告"],
+        output: [
+          { artifact: "exploration-result", summary: "調査報告" },
+          "影響範囲"
+        ],
         gate: "調査が完了している",
         on_failure: "design",
         retry_policy: { max_attempts: 2, retry_on: ["blocker", "high"] }
@@ -319,4 +323,34 @@ test("on_failureを持たないステップのretry_policyを許容する", () =
   workflow.steps[0].retry_policy = { max_attempts: 3 };
 
   assert.deepEqual(validateWorkflowRegistry([workflow], knownPaths), []);
+});
+
+test("input/outputのartifact型参照を検証する", () => {
+  const unknownType = validWorkflow();
+  unknownType.steps[1].output[0].artifact = "research-summary";
+  const missingKey = validWorkflow({
+    sourcePath: "workflows/missing-artifact-key.yaml",
+    name: "missing-artifact-key",
+    routing: { intents: ["missing-artifact-key"], required_request_fields: ["goal"], priority: 100 }
+  });
+  missingKey.steps[1].output[0] = { summary: "調査報告" };
+  const nonStringEntry = validWorkflow({
+    sourcePath: "workflows/non-string-entry.yaml",
+    name: "non-string-entry",
+    routing: { intents: ["non-string-entry"], required_request_fields: ["goal"], priority: 100 }
+  });
+  nonStringEntry.steps[1].input[0] = 42;
+
+  assert.deepEqual(validateWorkflowRegistry([unknownType, missingKey, nonStringEntry], knownPaths), [
+    'workflows/design.yaml: steps[1].output[0].artifact references unknown artifact type "research-summary".',
+    "workflows/missing-artifact-key.yaml: steps[1].output[0].artifact must be a non-empty string.",
+    "workflows/non-string-entry.yaml: steps[1].input[0] must be a string or an object with an \"artifact\" key."
+  ]);
+});
+
+test("artifact型レジストリが未指定なら型参照の突合をスキップする", () => {
+  const { artifactTypes, ...rest } = knownPaths;
+  const workflow = validWorkflow();
+
+  assert.deepEqual(validateWorkflowRegistry([workflow], rest), []);
 });

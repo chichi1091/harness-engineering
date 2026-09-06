@@ -77,7 +77,21 @@ Test/Reviewなど、失敗時に差し戻しを行うステップ（`on_failure`
 
 ## Artifact
 
-工程間で渡す成果物。MVP ではファイル形式を固定せず、会話・PR・Issue・リポジトリ上の文書など、実行環境に適した場所に残す。内容は Agent 定義の `outputs` と `done_when` に従う。
+工程間で渡す成果物。MVP ではファイル形式を固定せず、会話・PR・Issue・リポジトリ上の文書など、実行環境に適した場所に残す。
+
+Agent間で受け渡す構造化成果物は共通Schema（`src/artifacts/artifact-schemas.js`）に従う。共通エンベロープは `type`（登録済み型ID）、`produced_by`（生成役割）、`unresolved`（未解決事項）の3フィールドで、**すべて必須**。未知の追加フィールドは許容され、Schemaは段階的に拡張する。
+
+標準型と必須フィールド:
+
+| 型 | 生成役割 | 型別必須フィールド |
+|---|---|---|
+| `design-result` | Architect | `acceptance_criteria`(id, description) |
+| `exploration-result` | Explorer | `findings`(topic, evidence) |
+| `implementation-result` | Developer | `changed_files`(path, reason) |
+| `test-result` | Test Engineer | `tests`(executed(name, outcome) または pending(name, reason) のどちらか非空) |
+| `review-result` | Reviewer | `decision`(approve/reject)、`findings`(severity, location, problem) |
+
+Workflowの `input` / `output` エントリは、任意記述の文字列または `{ artifact: <型ID>, summary }` のオブジェクト。`validate:workflows` が型IDを登録済みSchemaと突合する。OpenCode Adapterは選択Workflowが使う型の必須フィールド一覧をDelegationコマンドの Artifact contracts セクションとして次のAgentへ引き渡す。`validateArtifact(artifact)` が個々の成果物の検証を担う。
 
 ## 能力
 

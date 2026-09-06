@@ -19,6 +19,7 @@ Harness Engineering の変更履歴。このファイルは v0.1.0-alpha のリ�
 
 ### Added
 
+- Agent間成果物の共通Schema（`src/artifacts/artifact-schemas.js`）。共通エンベロープ（`type`/`produced_by`/`unresolved`、すべて必須）と標準5型（`design-result`/`exploration-result`/`implementation-result`/`test-result`/`review-result`）の型別必須フィールドを定義し、`validateArtifact` が不正Artifactを検知する。Workflowの `input`/`output` は `{ artifact: <型ID>, summary }` で型を参照でき、`validate:workflows` が登録済み型と突合。OpenCode AdapterはArtifact contractsセクションで次Agentへ必須フィールド一覧を引き渡す
 - Agentのconstraintsをランタイムの実Permissionへ変換。共通Permissionモデル（`read`/`edit`/`write` × `allow`/`deny`）を正本 `agents/*.yaml` の `permissions` 宣言として導入し、Explorer/Reviewer/Architectはランタイム上でもread-onlyに（「リポジトリを変更してはならない」「実装変更は行わない」の機械強制）。`src/permission/permissions.js` が宣言検証と実効権限の合成を担い、Profileの `readonly` modeは権限を狭めるのみで緩めることは不可。OpenCode Adapterは実効権限を生成Agent定義の `tools:` ブロックへ変換
 - OpenCode AdapterによるAgent定義の生成を完成。`loadAgentDefinitions` が正本 `agents/*.yaml` を読み込み、`toOpenCodeAgentFiles` が役割ごとの目的・責務・制約・完了条件を `.opencode/agent/harness-<役割名>.md` のPrompt本文へ埋め込む（モデル・権限はProfileから反映）。対応する役割定義の欠落や形式不正は生成時に拒否する
 - Riskに応じたWorkflow選択。Requestの `risk`（`low`/`medium`/`high`、省略時は保守側の既定 `high`）とWorkflowの `routing.risk` 宣言により、軽微な変更はArchitect/Explorer/Reviewer/Documentationを省略した軽量Workflowへ、通常・重大な変更は従来どおりフルWorkflowへルーティングされる。同一intent・同一優先度でもriskが素分割されていればWorkflowの並存を許容するようRegistry検証を強化。`complexity` も検証と記録（Delegation Planの `requestProfile`）に対応し、Intent × Risk × Complexity による選択は将来フェーズ

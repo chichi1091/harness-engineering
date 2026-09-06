@@ -27,7 +27,8 @@ steps:
       - 問題定義
       - 調査依頼
     output:
-      - 原因仮説
+      - artifact: exploration-result
+        summary: 原因仮説
       - 影響範囲
     gate: 修正候補に根拠がある
   - id: implement
@@ -37,16 +38,19 @@ steps:
       - 原因仮説
       - 影響範囲
     output:
-      - 実装結果
+      - artifact: implementation-result
+        summary: 実装結果
       - 変更概要
     gate: 修正と再現テストの準備ができている
   - id: test
     agent: agents/test-engineer.yaml
     input:
       - 修正の受入条件
-      - 実装結果
+      - artifact: implementation-result
+        summary: 実装結果
     output:
-      - テスト結果
+      - artifact: test-result
+        summary: テスト結果
       - 未検証領域
     gate: 不具合再現と修正後の検証結果が記録されている
     on_failure: implement
@@ -55,10 +59,13 @@ steps:
   - id: review
     agent: agents/reviewer.yaml
     input:
-      - 実装結果
-      - テスト結果
+      - artifact: implementation-result
+        summary: 実装結果
+      - artifact: test-result
+        summary: テスト結果
     output:
-      - レビュー結果
+      - artifact: review-result
+        summary: レビュー結果
       - 判断
     gate: 承認されている
     on_failure: implement

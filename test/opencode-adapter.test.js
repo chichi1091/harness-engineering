@@ -82,6 +82,36 @@ test("retry_policyを持たないWorkflowのコマンドにRetry policyセクシ
   assert.doesNotMatch(delegation.command?.content ?? "", /## Retry policy/);
 });
 
+test("artifact型参照を含むWorkflowのコマンドにArtifact contractsセクションを含める", async () => {
+  const registry = await loadWorkflowRegistry(projectWorkflowsDirectory);
+  const delegation = createOpenCodeDelegation(
+    { intent: "feature", goal: "利用者が設定を保存できる" },
+    registry
+  );
+
+  const content = delegation.command?.content ?? "";
+  assert.match(content, /## Artifact contracts/);
+  assert.match(content, /対応する共通Schemaの必須フィールドを満たしてください/);
+  assert.match(
+    content,
+    /implementation-result: 必須 type \/ produced_by \/ unresolved \/ changed_files\(path, reason\)/
+  );
+  assert.match(
+    content,
+    /review-result: 必須 type \/ produced_by \/ unresolved \/ decision\(approve or reject\), findings\(severity, location, problem\)/
+  );
+});
+
+test("artifact型参照を持たないWorkflowのコマンドにArtifact contractsセクションを含めない", async () => {
+  const registry = await loadWorkflowRegistry(fixturesDirectory);
+  const delegation = createOpenCodeDelegation(
+    { intent: "feature", goal: "利用者が設定を保存できる" },
+    registry
+  );
+
+  assert.doesNotMatch(delegation.command?.content ?? "", /## Artifact contracts/);
+});
+
 test("readyでないPlanはOpenCodeコマンドへ変換しない", async () => {
   const registry = await loadWorkflowRegistry(fixturesDirectory);
   const delegation = createOpenCodeDelegation({ intent: "feature" }, registry);
