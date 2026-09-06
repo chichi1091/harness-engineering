@@ -39,6 +39,78 @@ Harness Engineering は、複数の AI を役割ごとに協調させ、ソフ�
 | `refactor` | `refactor` | 外部仕様を保った保守性改善 |
 | `research` | `research` | 技術的な問いの調査と推奨 |
 
+## 利用例
+
+依頼は自然文で構いません。AIは依頼をintentと必須入力に分解し、Workflow Registryから実行するWorkflowを決めます。必須入力が不足する場合は作業を始めず、確認を返します（`needs_clarification`）。
+
+### 標準の機能開発フロー
+
+`feature` intent で、`goal`（達成したいこと）が必須入力です。`risk` を指定しない場合は既定の `high` として扱われ、6工程すべての標準フローが実行されます。
+
+```text
+feature として対応してください。
+
+goal: 設定画面にダークモードの切り替えを追加し、選択を永続化したい
+制約: 既存のテーマAPIと互換性を保つこと
+```
+
+実行の流れ: Architect（設計）→ Explorer（調査）→ Developer（実装）→ Test Engineer（テスト）→ Reviewer（レビュー）→ Documentation（文書化）。工程間は構造化Artifact（設計メモ、調査報告、実装結果、テスト結果、レビュー結果）で受け渡され、Workflowに定義されたToken Budgetの範囲で実行されます。
+
+### 軽微な変更（軽量フロー）
+
+`feature` または `bug-fix` の依頼でも、`risk: low` を明示すると `lightweight-change`（実装 → テストの2工程）にルーティングされます。
+
+```text
+bug-fix として対応してください。risk: low
+
+goal: README の誤字を修正したい
+該当箇所: docs/architecture.md の「成果物の流れ」の項
+```
+
+### 不具合修正
+
+`bug-fix` intent では、期待する動作と実際の現象の説明（`expected_behavior`、`actual_behavior`）が必須入力です。
+
+```text
+bug-fix として対応してください。
+
+expected_behavior: 大量のデータを投入しても画面が応答し続けること
+actual_behavior: 1万件を超えるとUIが固まり、タイムアウトする
+再現手順: 一括インポートで1万件のCSVを読み込む
+```
+
+### レビュー
+
+`review` intent では、レビュー対象（`review_target`）が必須入力です。Reviewerは受入条件・設計要約・実装結果・テスト結果・変更差分を入力に、diff中心で判断します。
+
+```text
+review として対応してください。
+
+review_target: 現在の作業ブランチの変更差分
+確認観点: エラー処理と後方互換性
+```
+
+### 調査
+
+`research` intent では、調査したい問い（`question`）が必須入力です。
+
+```text
+research として対応してください。
+
+question: 状態管理ライブラリをAからBへ移行すべきか。移行コストと期待効果の根拠を示して
+scope: 現在利用しているAの機能のうち、実際に使っている範囲に限定する
+```
+
+### リスクに応じたルーティングの目安
+
+| 依頼の状況 | 指示 | 選ばれるWorkflow |
+| --- | --- | --- |
+| 通常の機能開発 | `risk` を指定しない | `feature-development`（標準フロー） |
+| 明らかに軽微な変更 | `risk: low` を明示 | `lightweight-change`（2工程） |
+| 影響の大きい変更 | `risk: high` を明示 | `feature-development`（標準フロー） |
+
+実行時の品質規則（失敗時の再試行上限、予算超過時の安全な停止、確信できない判断の上位モデルへのエスカレーション等）はWorkflowとExecution Profileの定義から自動的に適用されます。詳細は [用語と定義形式](docs/concepts.md) を参照してください。
+
 ## 品質ゲート
 
 Pull Requestでは、単体テスト、YAML構文検証、Workflow Registryの意味検証、Profileの意味検証、`git diff --check` を自動実行します。ローカルでは次を実行できます。
