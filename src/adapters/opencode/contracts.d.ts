@@ -38,3 +38,39 @@ export declare function toOpenCodeCommand(
   delegationPlan: DelegationPlan,
   workflowRegistry: readonly RegisteredWorkflow[]
 ): OpenCodeCommand | null;
+
+export interface ProfileAssignment {
+  provider: string;
+  model: string;
+  mode: "readonly" | "write";
+}
+
+export type ProfileAssignments = Readonly<Record<string, ProfileAssignment>>;
+
+export interface ExecutionProfile {
+  name: string;
+  assignments: ProfileAssignments;
+}
+
+export interface RegisteredProfile extends ExecutionProfile {
+  sourcePath: string;
+}
+
+export interface OpenCodeAgentFile {
+  role: string;
+  relativePath: string;
+  content: string;
+}
+
+export declare function loadProfiles(
+  profilesDirectory: string
+): Promise<readonly RegisteredProfile[]>;
+
+export declare function toOpenCodeAgentFiles(
+  profile: RegisteredProfile
+): readonly OpenCodeAgentFile[];
+
+export declare function describeRoleAssignments(
+  profile: RegisteredProfile | null,
+  roles: readonly string[]
+): readonly string[];

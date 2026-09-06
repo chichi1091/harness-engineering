@@ -35,5 +35,8 @@ jobs:
       - name: Validate Workflow Registry
         run: npm run validate:workflows
 
+      - name: Validate Profiles
+        run: npm run validate:profiles
+
       - name: Check pull request diff
         run: git diff --check "origin/${{ github.base_ref }}...HEAD"

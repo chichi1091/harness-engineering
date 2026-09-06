@@ -1,7 +1,8 @@
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { parse } from "yaml";
 import { decide } from "../../decision-engine/decision-engine.js";
+import { describeRoleAssignments } from "./opencode-profile-adapter.js";
 
 const YAML_FILE_PATTERN = /\.ya?ml$/;
 
@@ -46,30 +47,35 @@ export function createDecisionContext(request, workflowRegistry) {
 
 /**
  * Calls the Engine and converts a ready plan to OpenCode command content.
+ * When an Execution Profile is supplied, the command also lists the
+ * role → model assignments of the roles the selected workflow uses.
  * This does not create a command file or invoke OpenCode.
  *
  * @param {import("../../decision-engine/contracts.js").RequestInput} request
  * @param {readonly import("./contracts.js").RegisteredWorkflow[]} workflowRegistry
+ * @param {import("./contracts.js").RegisteredProfile | null} [profile]
  * @returns {import("./contracts.js").OpenCodeDelegation}
  */
-export function createOpenCodeDelegation(request, workflowRegistry) {
+export function createOpenCodeDelegation(request, workflowRegistry, profile = null) {
   const delegationPlan = decide(createDecisionContext(request, workflowRegistry));
 
   return {
     delegationPlan,
-    command: toOpenCodeCommand(delegationPlan, workflowRegistry)
+    command: toOpenCodeCommand(delegationPlan, workflowRegistry, profile)
   };
 }
 
 /**
  * Converts a ready Delegation Plan into the content of an OpenCode custom
  * command. The caller owns writing the content to .opencode/commands/.
+ * An optional Execution Profile appends the role assignments section.
  *
  * @param {import("../../decision-engine/contracts.js").DelegationPlan} delegationPlan
  * @param {readonly import("./contracts.js").RegisteredWorkflow[]} workflowRegistry
+ * @param {import("./contracts.js").RegisteredProfile | null} [profile]
  * @returns {import("./contracts.js").OpenCodeCommand | null}
  */
-export function toOpenCodeCommand(delegationPlan, workflowRegistry) {
+export function toOpenCodeCommand(delegationPlan, workflowRegistry, profile = null) {
   if (delegationPlan.status !== "ready" || !delegationPlan.selectedWorkflow) {
     return null;
   }
@@ -84,17 +90,17 @@ export function toOpenCodeCommand(delegationPlan, workflowRegistry) {
 
   return {
     relativePath: `.opencode/commands/harness-${workflow.name}.md`,
-    content: renderOpenCodeCommand(workflow)
+    content: renderOpenCodeCommand(workflow, profile)
   };
 }
 
-function renderOpenCodeCommand(workflow) {
+function renderOpenCodeCommand(workflow, profile) {
   const steps = (workflow.steps ?? []).map((step) => {
     const outputs = (step.output ?? []).join("、");
     return `- ${step.id}: ${step.agent} を読み、${outputs}を成果物として残す。`;
   });
 
-  return [
+  const lines = [
     "---",
     `description: ${workflow.purpose ?? workflow.name}`,
     "---",
@@ -107,5 +113,23 @@ function renderOpenCodeCommand(workflow) {
     "",
     "## Steps",
     ...steps
-  ].join("\n");
+  ];
+
+  if (profile) {
+    lines.push("", "## Role assignments", ...describeRoleAssignments(profile, workflowRoles(workflow)));
+  }
+
+  return lines.join("\n");
+}
+
+function workflowRoles(workflow) {
+  const roles = (workflow.steps ?? [])
+    .map((step) => stepRole(step.agent))
+    .filter((role) => role !== null);
+  return [...new Set(roles)];
+}
+
+function stepRole(agentPath) {
+  if (typeof agentPath !== "string" || agentPath.trim() === "") return null;
+  return basename(agentPath).replace(/\.ya?ml$/, "");
 }

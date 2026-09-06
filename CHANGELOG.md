@@ -2,6 +2,15 @@
 
 Harness Engineering の変更履歴。このファイルは v0.1.0-alpha のリリース候補総括から運用を開始する。
 
+## [Unreleased]
+
+### Added
+
+- Execution Profile（`profiles/`）を導入。役割とモデル（provider/model）、権限モード（`readonly` / `write`）の割当を実行環境ごとに定義でき、正本の Agent 定義はモデル非依存を維持する
+- Profile意味検証（`npm run validate:profiles`）とPR CI品質ゲートへの追加
+- OpenCode Adapter: Profileの解釈（`.opencode/agent/` 用agent定義の値生成、Delegationコマンドへの役割割当反映）
+- OpenCode Executor: `.opencode/agent/` への安全な配置（`placeOpenCodeAgent`）
+
 ## [0.1.0-alpha] - 2026-08-23
 
 最初のリリース候補(Release Candidate)。ランタイム非依存の共通定義正本、Workflow選択のPure Function、OpenCode向けの値生成・配置層、CI品質ゲートまでを含む。
