@@ -1,0 +1,39 @@
+name: lightweight-change
+purpose: 軽微な変更を最小工程で安全に届ける
+entry_command: commands/lightweight.md
+routing:
+  intents:
+    - feature
+    - bug-fix
+  required_request_fields:
+    - goal
+  priority: 100
+  risk:
+    - low
+steps:
+  - id: implement
+    agent: agents/developer.yaml
+    input:
+      - 依頼内容
+      - 変更箇所の特定情報
+    output:
+      - 実装結果
+      - 変更概要
+    gate: 意図した変更が最小範囲で行われている
+  - id: test
+    agent: agents/test-engineer.yaml
+    input:
+      - 依頼内容
+      - 実装結果
+      - 変更概要
+    output:
+      - テスト結果
+      - 未検証領域
+    gate: 変更に関する検証結果が記録されている
+    on_failure: implement
+    retry_policy:
+      max_attempts: 2
+completion:
+  - 実装と検証の成果物がそろっている
+  - 影響が軽微である根拠が記録されている
+  - 未解決事項が明記されている

@@ -9,7 +9,8 @@ const workflowRegistry = [
     routing: {
       intents: ["feature"],
       required_request_fields: ["goal"],
-      priority: 100
+      priority: 100,
+      risk: ["medium", "high"]
     }
   },
   {
@@ -18,7 +19,8 @@ const workflowRegistry = [
     routing: {
       intents: ["bug-fix"],
       required_request_fields: ["expected_behavior", "actual_behavior"],
-      priority: 100
+      priority: 100,
+      risk: ["medium", "high"]
     }
   },
   {
@@ -56,6 +58,16 @@ const workflowRegistry = [
       required_request_fields: ["question"],
       priority: 100
     }
+  },
+  {
+    name: "lightweight-change",
+    purpose: "軽微な変更を最小工程で安全に届ける",
+    routing: {
+      intents: ["feature", "bug-fix"],
+      required_request_fields: ["goal"],
+      priority: 100,
+      risk: ["low"]
+    }
   }
 ];
 
@@ -67,6 +79,98 @@ test("feature要求ではfeature Workflowを選択する", () => {
 
   assert.equal(plan.status, "ready");
   assert.equal(plan.selectedWorkflow?.name, "feature-development");
+});
+
+test("risk=lowの要求では軽量Workflowを選択する", () => {
+  const plan = decide({
+    request: { intent: "feature", goal: "READMEのtypoを修正する", risk: "low" },
+    workflowRegistry
+  });
+
+  assert.equal(plan.status, "ready");
+  assert.equal(plan.selectedWorkflow?.name, "lightweight-change");
+});
+
+test("risk未指定は既定のhighとして扱いフルWorkflowを選択する", () => {
+  const plan = decide({
+    request: { intent: "feature", goal: "利用者が設定を保存できる" },
+    workflowRegistry
+  });
+
+  assert.equal(plan.status, "ready");
+  assert.equal(plan.selectedWorkflow?.name, "feature-development");
+  assert.equal(plan.requestProfile.risk, "high");
+});
+
+test("risk=highでは従来どおりフルWorkflowを選択する", () => {
+  const plan = decide({
+    request: { intent: "bug-fix", expected_behavior: "保存に成功する", actual_behavior: "エラーが返る", risk: "high" },
+    workflowRegistry
+  });
+
+  assert.equal(plan.status, "ready");
+  assert.equal(plan.selectedWorkflow?.name, "bug-fix");
+});
+
+test("risk=mediumでもフルWorkflowを選択する", () => {
+  const plan = decide({
+    request: { intent: "feature", goal: "利用者が設定を保存できる", risk: "medium" },
+    workflowRegistry
+  });
+
+  assert.equal(plan.status, "ready");
+  assert.equal(plan.selectedWorkflow?.name, "feature-development");
+});
+
+test("宣言されたriskが要求のriskを含まないWorkflowは候補から外れる", () => {
+  const plan = decide({
+    request: { intent: "bug-fix", goal: "タイポ修正", risk: "low" },
+    workflowRegistry
+  });
+
+  assert.equal(plan.status, "ready");
+  assert.equal(plan.selectedWorkflow?.name, "lightweight-change");
+});
+
+test("risk語彙外の値はneeds_clarificationを返す", () => {
+  const plan = decide({
+    request: { intent: "feature", goal: "利用者が設定を保存できる", risk: "minimal" },
+    workflowRegistry
+  });
+
+  assert.equal(plan.status, "needs_clarification");
+  assert.deepEqual(plan.clarification?.missing_fields, ["risk"]);
+  assert.equal(plan.diagnostics[0].code, "invalid_risk");
+});
+
+test("complexity語彙外の値はneeds_clarificationを返す", () => {
+  const plan = decide({
+    request: { intent: "feature", goal: "利用者が設定を保存できる", complexity: "huge" },
+    workflowRegistry
+  });
+
+  assert.equal(plan.status, "needs_clarification");
+  assert.deepEqual(plan.clarification?.missing_fields, ["complexity"]);
+  assert.equal(plan.diagnostics[0].code, "invalid_complexity");
+});
+
+test("planには実効riskとcomplexityのrequestProfileを記録する", () => {
+  const plan = decide({
+    request: { intent: "feature", goal: "READMEのtypoを修正する", risk: "low", complexity: "low" },
+    workflowRegistry
+  });
+
+  assert.deepEqual(plan.requestProfile, { risk: "low", complexity: "low" });
+});
+
+test("complexity未指定はnullとして記録され選択に影響しない", () => {
+  const plan = decide({
+    request: { intent: "feature", goal: "利用者が設定を保存できる", risk: "low" },
+    workflowRegistry
+  });
+
+  assert.deepEqual(plan.requestProfile, { risk: "low", complexity: null });
+  assert.equal(plan.selectedWorkflow?.name, "lightweight-change");
 });
 
 test("bug要求ではbug-fix Workflowを選択する", () => {
