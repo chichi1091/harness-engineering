@@ -10,6 +10,8 @@ Harness Engineering の変更履歴。このファイルは v0.1.0-alpha のリ�
 - Profile意味検証（`npm run validate:profiles`）とPR CI品質ゲートへの追加
 - OpenCode Adapter: Profileの解釈（`.opencode/agent/` 用agent定義の値生成、Delegationコマンドへの役割割当反映）
 - OpenCode Executor: `.opencode/agent/` への安全な配置（`placeOpenCodeAgent`）
+- ReviewerのSeverity定義と機械的な承認基準。`agents/reviewer.yaml` に `severity`（blocker/high/medium/lowと判断基準）、`approval`（blocker/highが0件のときだけ承認）、`non_blocking`（cosmetic・スタイル・speculative refactoring・無関係な既存問題は原則Blockingにしない）、`output_format` を追加
+- `src/review/review-decision.js`: `decideReview`（指摘のSeverity集計による approve/reject/invalid 判定）と `validateReviewPolicy`（`report`/`ignore` への閾値設定を禁止し、MEDIUM/LOWだけでは差し戻されないことを構造的に保証）
 
 ## [0.1.0-alpha] - 2026-08-23
 
