@@ -43,6 +43,70 @@ test("有効なimplementation-resultを受け入れる(受入条件の状況は�
   assert.deepEqual(validateArtifact(artifact), []);
 });
 
+test("有効なexploration-resultを受け入れる(関連symbolは任意)", () => {
+  const artifact = envelope("exploration-result", {
+    produced_by: "explorer",
+    findings: [{ topic: "依存関係", evidence: "package.jsonの記載" }],
+    relevant_files: ["src/foo.js", "src/bar.js"],
+    relevant_symbols: ["FooService.execute"]
+  });
+
+  assert.deepEqual(validateArtifact(artifact), []);
+
+  const withoutSymbols = envelope("exploration-result", {
+    produced_by: "explorer",
+    findings: [{ topic: "依存関係", evidence: "package.jsonの記載" }],
+    relevant_files: ["src/foo.js"]
+  });
+
+  assert.deepEqual(validateArtifact(withoutSymbols), []);
+});
+
+test("exploration-resultは関連ファイルの列挙を要求する", () => {
+  const missing = envelope("exploration-result", {
+    produced_by: "explorer",
+    findings: [{ topic: "依存関係", evidence: "package.jsonの記載" }]
+  });
+
+  assert.match(validateArtifact(missing).join("\n"), /"relevant_files" must be a non-empty list of file paths/);
+
+  const emptyList = envelope("exploration-result", {
+    produced_by: "explorer",
+    findings: [{ topic: "依存関係", evidence: "package.jsonの記載" }],
+    relevant_files: []
+  });
+
+  assert.match(validateArtifact(emptyList).join("\n"), /"relevant_files" must be a non-empty list of file paths/);
+
+  const nonString = envelope("exploration-result", {
+    produced_by: "explorer",
+    findings: [{ topic: "依存関係", evidence: "package.jsonの記載" }],
+    relevant_files: [42]
+  });
+
+  assert.match(validateArtifact(nonString).join("\n"), /"relevant_files" must be a non-empty list of file paths/);
+});
+
+test("exploration-resultのrelevant_symbolsは空リストを許容するが要素は非空文字列を要求する", () => {
+  const emptySymbols = envelope("exploration-result", {
+    produced_by: "explorer",
+    findings: [{ topic: "依存関係", evidence: "package.jsonの記載" }],
+    relevant_files: ["src/foo.js"],
+    relevant_symbols: []
+  });
+
+  assert.deepEqual(validateArtifact(emptySymbols), []);
+
+  const invalidSymbol = envelope("exploration-result", {
+    produced_by: "explorer",
+    findings: [{ topic: "依存関係", evidence: "package.jsonの記載" }],
+    relevant_files: ["src/foo.js"],
+    relevant_symbols: [""]
+  });
+
+  assert.match(validateArtifact(invalidSymbol).join("\n"), /"relevant_symbols" must be a list of symbol names/);
+});
+
 test("実効パス: すべての型の正本サンプルが検証を通る", () => {
   const samples = {
     "design-result": envelope("design-result", {
@@ -50,7 +114,8 @@ test("実効パス: すべての型の正本サンプルが検証を通る", () 
     }),
     "exploration-result": envelope("exploration-result", {
       produced_by: "explorer",
-      findings: [{ topic: "依存関係", evidence: "package.jsonの記載" }]
+      findings: [{ topic: "依存関係", evidence: "package.jsonの記載" }],
+      relevant_files: ["src/foo.js"]
     }),
     "implementation-result": envelope("implementation-result", {
       produced_by: "developer",

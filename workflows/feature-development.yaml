@@ -78,6 +78,7 @@ steps:
         summary: 実装結果
       - artifact: test-result
         summary: テスト結果
+      - 変更差分
     output:
       - artifact: review-result
         summary: レビュー結果
