@@ -24,6 +24,14 @@ Decision Engineに渡す唯一の入力。ユーザー要求と、外部で読�
 
 Decision Engineが返す唯一の出力。MVPでは、状態、選択Workflow、不足情報、選択不能の根拠を表す。Agentへの実際の委譲・CLI実行は含まない。
 
+## Severity
+
+Reviewerが指摘に付与する重要度。正本は `agents/reviewer.yaml` であり、`blocker` と `high` は差し戻し（reject）、`medium` は報告（report）、`low` は記録のみ（ignore）を表す。各Severityの判断基準も同ファイルに文章化されている。
+
+承認は機械的に判断できる。`decideReview(findings, policy)`（`src/review/review-decision.js`）が指摘のSeverity集計を `approval.require` と比較し、`blocker` と `high` が0件のときだけ `approved` を返す。`validateReviewPolicy` は `report`/`ignore` のSeverityに閾値を設定することを禁止するため、MEDIUMとLOWだけではWorkflowを差し戻されないことが構造的に保証される。
+
+原則としてBlockingにしない指摘: cosmeticな変更、個人の好みによるスタイル指摘、根拠のある保守性改善を示さないspeculative refactoring、本変更と無関係な既存問題。
+
 ## Execution Profile
 
 実行環境ごとに役割とモデルの割当を定義する `profiles/` のYAML。`assignments` は役割名を鍵とし、`provider`、`model`、`mode`（`readonly` または `write`）を持つ。
