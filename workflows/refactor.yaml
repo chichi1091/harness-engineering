@@ -15,7 +15,8 @@ steps:
       - 対象
       - 改善目標
     output:
-      - リファクタリング方針
+      - artifact: design-result
+        summary: リファクタリング方針
       - 仕様維持の受入条件
       - Explorer への調査依頼
     gate: 変更対象と仕様維持条件が明確である
@@ -25,7 +26,8 @@ steps:
       - リファクタリング方針
       - 調査依頼
     output:
-      - 調査報告
+      - artifact: exploration-result
+        summary: 調査報告
       - 影響範囲
     gate: 依存関係と回帰リスクが根拠付きで示されている
   - id: implement
@@ -35,17 +37,20 @@ steps:
       - 仕様維持の受入条件
       - 調査報告
     output:
-      - 実装結果
+      - artifact: implementation-result
+        summary: 実装結果
       - 変更概要
     gate: 改善目標を満たし、外部仕様を変更していない
   - id: test
     agent: agents/test-engineer.yaml
     input:
       - 仕様維持の受入条件
-      - 実装結果
+      - artifact: implementation-result
+        summary: 実装結果
       - 変更概要
     output:
-      - テスト結果
+      - artifact: test-result
+        summary: テスト結果
       - 未検証領域
     gate: 仕様維持と回帰リスクの検証結果が記録されている
     on_failure: implement
@@ -55,10 +60,13 @@ steps:
     agent: agents/reviewer.yaml
     input:
       - リファクタリング方針
-      - 実装結果
-      - テスト結果
+      - artifact: implementation-result
+        summary: 実装結果
+      - artifact: test-result
+        summary: テスト結果
     output:
-      - レビュー結果
+      - artifact: review-result
+        summary: レビュー結果
       - 承認または差し戻し判断
     gate: 保守性の改善と仕様維持が承認されている
     on_failure: implement

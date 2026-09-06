@@ -14,17 +14,20 @@ steps:
       - レビュー対象
       - 確認観点
     output:
-      - 調査報告
+      - artifact: exploration-result
+        summary: 調査報告
       - 影響範囲
     gate: 対象と根拠が確認されている
   - id: review
     agent: agents/reviewer.yaml
     input:
       - レビュー対象
-      - 調査報告
+      - artifact: exploration-result
+        summary: 調査報告
       - 影響範囲
     output:
-      - レビュー結果
+      - artifact: review-result
+        summary: レビュー結果
       - 承認または差し戻し判断
     gate: 根拠と重要度を含む判断が記録されている
   - id: document

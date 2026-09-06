@@ -17,17 +17,20 @@ steps:
       - 依頼内容
       - 変更箇所の特定情報
     output:
-      - 実装結果
+      - artifact: implementation-result
+        summary: 実装結果
       - 変更概要
     gate: 意図した変更が最小範囲で行われている
   - id: test
     agent: agents/test-engineer.yaml
     input:
       - 依頼内容
-      - 実装結果
+      - artifact: implementation-result
+        summary: 実装結果
       - 変更概要
     output:
-      - テスト結果
+      - artifact: test-result
+        summary: テスト結果
       - 未検証領域
     gate: 変更に関する検証結果が記録されている
     on_failure: implement

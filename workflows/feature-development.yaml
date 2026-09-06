@@ -16,7 +16,8 @@ steps:
     input:
       - 利用者の依頼
     output:
-      - 設計メモ
+      - artifact: design-result
+        summary: 設計メモ
       - 受入条件
       - 調査依頼
     gate: 実装対象と受入条件が明確である
@@ -26,7 +27,8 @@ steps:
       - 設計メモ
       - 調査依頼
     output:
-      - 調査報告
+      - artifact: exploration-result
+        summary: 調査報告
       - 影響範囲
     gate: 変更箇所とリスクが根拠付きで示されている
   - id: implement
@@ -36,17 +38,20 @@ steps:
       - 受入条件
       - 調査報告
     output:
-      - 実装結果
+      - artifact: implementation-result
+        summary: 実装結果
       - 変更概要
     gate: 受入条件に対応する実装がある
   - id: test
     agent: agents/test-engineer.yaml
     input:
       - 受入条件
-      - 実装結果
+      - artifact: implementation-result
+        summary: 実装結果
       - 変更概要
     output:
-      - テスト結果
+      - artifact: test-result
+        summary: テスト結果
       - 未検証領域
     gate: 受入条件の検証結果が記録されている
     on_failure: implement
@@ -56,10 +61,13 @@ steps:
     agent: agents/reviewer.yaml
     input:
       - 設計メモ
-      - 実装結果
-      - テスト結果
+      - artifact: implementation-result
+        summary: 実装結果
+      - artifact: test-result
+        summary: テスト結果
     output:
-      - レビュー結果
+      - artifact: review-result
+        summary: レビュー結果
       - 判断
     gate: 承認されている
     on_failure: implement

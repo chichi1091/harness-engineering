@@ -11,13 +11,15 @@ const RISK_VOCABULARY = new Set(["low", "medium", "high"]);
  *
  * severityNames is the optional set of severity names defined by the
  * canonical agents/reviewer.yaml; when supplied, retry_on entries are
+ * checked against it. artifactTypes is the optional set of artifact type
+ * ids from src/artifacts; when supplied, typed input/output entries are
  * checked against it.
  *
  * @param {readonly Record<string, unknown>[]} workflows
- * @param {{ agentPaths: ReadonlySet<string>, commandPaths: ReadonlySet<string>, severityNames?: ReadonlySet<string> }} knownPaths
+ * @param {{ agentPaths: ReadonlySet<string>, commandPaths: ReadonlySet<string>, severityNames?: ReadonlySet<string>, artifactTypes?: ReadonlySet<string> }} knownPaths
  * @returns {string[]}
  */
-export function validateWorkflowRegistry(workflows, { agentPaths, commandPaths, severityNames }) {
+export function validateWorkflowRegistry(workflows, { agentPaths, commandPaths, severityNames, artifactTypes }) {
   const errors = [];
   const workflowNames = new Set();
 
@@ -35,7 +37,7 @@ export function validateWorkflowRegistry(workflows, { agentPaths, commandPaths, 
     validateRequiredString(workflow.purpose, `${label}: purpose`, errors);
     validateReference(workflow.entry_command, commandPaths, `${label}: entry_command`, errors);
     validateRouting(workflow.routing, label, errors);
-    validateSteps(workflow.steps, { agentPaths, severityNames }, label, errors);
+    validateSteps(workflow.steps, { agentPaths, severityNames, artifactTypes }, label, errors);
     validateCompletion(workflow.completion, label, errors);
   }
 
@@ -146,7 +148,7 @@ function validateRiskLevels(risk, label, errors) {
   }
 }
 
-function validateSteps(steps, { agentPaths, severityNames }, label, errors) {
+function validateSteps(steps, { agentPaths, severityNames, artifactTypes }, label, errors) {
   if (!Array.isArray(steps) || steps.length === 0) {
     errors.push(`${label}: steps must be a non-empty array.`);
     return;
@@ -166,8 +168,8 @@ function validateSteps(steps, { agentPaths, severityNames }, label, errors) {
       stepIds.add(step.id);
     }
     validateReference(step.agent, agentPaths, `${stepLabel}.agent`, errors);
-    validateNonEmptyStringArray(step.input, `${stepLabel}.input`, errors);
-    validateNonEmptyStringArray(step.output, `${stepLabel}.output`, errors);
+    validateArtifactEntries(step.input, artifactTypes, `${stepLabel}.input`, errors);
+    validateArtifactEntries(step.output, artifactTypes, `${stepLabel}.output`, errors);
     validateRequiredString(step.gate, `${stepLabel}.gate`, errors);
     validateRetryPolicy(step, { severityNames, stepLabel }, errors);
   }
@@ -224,6 +226,38 @@ function validateRetryPolicy(step, { severityNames, stepLabel }, errors) {
 
 function validateCompletion(completion, label, errors) {
   validateNonEmptyStringArray(completion, `${label}: completion`, errors);
+}
+
+/**
+ * Step input/output entries are either plain strings (informal labels) or
+ * objects referencing a registered artifact type via "artifact". Typed
+ * references are only checked when the artifact type registry is supplied.
+ */
+function validateArtifactEntries(entries, artifactTypes, label, errors) {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    errors.push(`${label} must be a non-empty array.`);
+    return;
+  }
+
+  entries.forEach((entry, index) => {
+    if (typeof entry === "string") {
+      if (entry.trim() === "") {
+        errors.push(`${label} must not contain empty entries.`);
+      }
+      return;
+    }
+    if (!isRecord(entry)) {
+      errors.push(`${label}[${index}] must be a string or an object with an "artifact" key.`);
+      return;
+    }
+    if (typeof entry.artifact !== "string" || entry.artifact.trim() === "") {
+      errors.push(`${label}[${index}].artifact must be a non-empty string.`);
+      return;
+    }
+    if (artifactTypes !== undefined && !artifactTypes.has(entry.artifact)) {
+      errors.push(`${label}[${index}].artifact references unknown artifact type "${entry.artifact}".`);
+    }
+  });
 }
 
 function validateReference(value, knownPaths, label, errors) {

@@ -14,7 +14,8 @@ steps:
       - 利用者の目的
       - 制約
     output:
-      - 設計メモ
+      - artifact: design-result
+        summary: 設計メモ
       - 受入条件
       - Explorer への調査依頼
     gate: 設計方針と受入条件が検証可能である
@@ -24,17 +25,21 @@ steps:
       - 設計メモ
       - 調査依頼
     output:
-      - 調査報告
+      - artifact: exploration-result
+        summary: 調査報告
       - 影響範囲
     gate: 既存実装との整合性が根拠付きで示されている
   - id: review
     agent: agents/reviewer.yaml
     input:
-      - 設計メモ
+      - artifact: design-result
+        summary: 設計メモ
       - 受入条件
-      - 調査報告
+      - artifact: exploration-result
+        summary: 調査報告
     output:
-      - 設計レビュー結果
+      - artifact: review-result
+        summary: 設計レビュー結果
       - 承認または差し戻し判断
     gate: 設計が承認されている
     on_failure: design
