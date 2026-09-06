@@ -49,6 +49,8 @@ steps:
       - 未検証領域
     gate: 仕様維持と回帰リスクの検証結果が記録されている
     on_failure: implement
+    retry_policy:
+      max_attempts: 2
   - id: review
     agent: agents/reviewer.yaml
     input:
@@ -60,6 +62,11 @@ steps:
       - 承認または差し戻し判断
     gate: 保守性の改善と仕様維持が承認されている
     on_failure: implement
+    retry_policy:
+      max_attempts: 2
+      retry_on:
+        - blocker
+        - high
   - id: document
     agent: agents/documentation.yaml
     input:

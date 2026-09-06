@@ -4,7 +4,8 @@ import { validateWorkflowRegistry } from "../src/validation/workflow-registry-va
 
 const knownPaths = {
   agentPaths: new Set(["agents/architect.yaml", "agents/explorer.yaml"]),
-  commandPaths: new Set(["commands/design.md"])
+  commandPaths: new Set(["commands/design.md"]),
+  severityNames: new Set(["blocker", "high", "medium", "low"])
 };
 
 function validWorkflow(overrides = {}) {
@@ -32,7 +33,8 @@ function validWorkflow(overrides = {}) {
         input: ["設計メモ"],
         output: ["調査報告"],
         gate: "調査が完了している",
-        on_failure: "design"
+        on_failure: "design",
+        retry_policy: { max_attempts: 2, retry_on: ["blocker", "high"] }
       }
     ],
     completion: ["設計と調査の成果物がある"],
@@ -168,6 +170,77 @@ test("同一Workflow内の重複intentは許容する", () => {
       priority: 100
     }
   });
+
+  assert.deepEqual(validateWorkflowRegistry([workflow], knownPaths), []);
+});
+
+test("on_failureを持つステップがretry_policyを持たない場合を拒否する", () => {
+  const workflow = validWorkflow();
+  delete workflow.steps[1].retry_policy;
+
+  assert.deepEqual(validateWorkflowRegistry([workflow], knownPaths), [
+    "workflows/design.yaml: steps[1] declares on_failure and must define retry_policy."
+  ]);
+});
+
+test("max_attemptsが1以上の整数でない場合を拒否する", () => {
+  const zero = validWorkflow();
+  zero.steps[1].retry_policy = { max_attempts: 0 };
+  const fractional = validWorkflow({
+    sourcePath: "workflows/fractional.yaml",
+    name: "fractional",
+    routing: { intents: ["fractional"], required_request_fields: ["goal"], priority: 100 }
+  });
+  fractional.steps[1].retry_policy = { max_attempts: 1.5 };
+  const nonNumeric = validWorkflow({
+    sourcePath: "workflows/non-numeric.yaml",
+    name: "non-numeric",
+    routing: { intents: ["non-numeric"], required_request_fields: ["goal"], priority: 100 }
+  });
+  nonNumeric.steps[1].retry_policy = { max_attempts: "2" };
+
+  assert.deepEqual(validateWorkflowRegistry([zero, fractional, nonNumeric], knownPaths), [
+    "workflows/design.yaml: steps[1].retry_policy.max_attempts must be an integer greater than or equal to 1.",
+    "workflows/fractional.yaml: steps[1].retry_policy.max_attempts must be an integer greater than or equal to 1.",
+    "workflows/non-numeric.yaml: steps[1].retry_policy.max_attempts must be an integer greater than or equal to 1."
+  ]);
+});
+
+test("retry_onが未知のseverityや不正な形式を参照する場合を拒否する", () => {
+  const unknown = validWorkflow();
+  unknown.steps[1].retry_policy = { max_attempts: 2, retry_on: ["critical"] };
+  const empty = validWorkflow({
+    sourcePath: "workflows/empty-retry-on.yaml",
+    name: "empty-retry-on",
+    routing: { intents: ["empty-retry-on"], required_request_fields: ["goal"], priority: 100 }
+  });
+  empty.steps[1].retry_policy = { max_attempts: 2, retry_on: [] };
+  const nonArray = validWorkflow({
+    sourcePath: "workflows/non-array-retry-on.yaml",
+    name: "non-array-retry-on",
+    routing: { intents: ["non-array-retry-on"], required_request_fields: ["goal"], priority: 100 }
+  });
+  nonArray.steps[1].retry_policy = { max_attempts: 2, retry_on: "blocker" };
+
+  assert.deepEqual(validateWorkflowRegistry([unknown, empty, nonArray], knownPaths), [
+    'workflows/design.yaml: steps[1].retry_policy.retry_on references unknown severity "critical".',
+    "workflows/empty-retry-on.yaml: steps[1].retry_policy.retry_on must be a non-empty array of severity names.",
+    "workflows/non-array-retry-on.yaml: steps[1].retry_policy.retry_on must be a non-empty array of severity names."
+  ]);
+});
+
+test("retry_policyが不正でも差し戻し検証はカスケードしない", () => {
+  const workflow = validWorkflow();
+  workflow.steps[1].retry_policy = "not-an-object";
+
+  assert.deepEqual(validateWorkflowRegistry([workflow], knownPaths), [
+    "workflows/design.yaml: steps[1].retry_policy must be an object."
+  ]);
+});
+
+test("on_failureを持たないステップのretry_policyを許容する", () => {
+  const workflow = validWorkflow();
+  workflow.steps[0].retry_policy = { max_attempts: 3 };
 
   assert.deepEqual(validateWorkflowRegistry([workflow], knownPaths), []);
 });

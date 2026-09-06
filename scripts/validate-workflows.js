@@ -9,6 +9,8 @@ const [agentPaths, commandPaths] = await Promise.all([
   listFiles("commands", /\.md$/)
 ]);
 
+const severityNames = await loadSeverityNames();
+
 const workflows = [];
 const parseErrors = [];
 
@@ -24,7 +26,8 @@ const errors = [
   ...parseErrors,
   ...validateWorkflowRegistry(workflows, {
     agentPaths: new Set(agentPaths),
-    commandPaths: new Set(commandPaths)
+    commandPaths: new Set(commandPaths),
+    severityNames
   })
 ];
 
@@ -33,6 +36,24 @@ if (errors.length > 0) {
   process.exitCode = 1;
 } else {
   console.log(`valid workflow registry: ${workflows.length} workflows`);
+}
+
+/**
+ * The canonical severity vocabulary lives in agents/reviewer.yaml. Workflow
+ * retry_on entries are validated against it so both definitions stay in
+ * sync.
+ */
+async function loadSeverityNames() {
+  try {
+    const reviewer = parse(await readFile(join("agents", "reviewer.yaml"), "utf8"));
+    const severity = reviewer?.severity;
+    if (!severity || typeof severity !== "object") return undefined;
+    return new Set(Object.keys(severity));
+  } catch {
+    // The registry validation reports reviewer.yaml problems separately;
+    // retry_on vocabulary is simply not checked when the definition is absent.
+    return undefined;
+  }
 }
 
 async function listFiles(directory, pattern) {

@@ -54,6 +54,34 @@ test("readyのDelegation PlanをOpenCode Markdownコマンドへ変換する", a
   assert.match(delegation.command?.content ?? "", /agents\/architect\.yaml/);
 });
 
+test("retry_policyを持つ正本WorkflowのコマンドにRetry policyセクションを含める", async () => {
+  const registry = await loadWorkflowRegistry(projectWorkflowsDirectory);
+  const delegation = createOpenCodeDelegation(
+    { intent: "feature", goal: "利用者が設定を保存できる" },
+    registry
+  );
+
+  const content = delegation.command?.content ?? "";
+  assert.match(content, /## Retry policy/);
+  assert.match(content, /on_failure による差し戻しを実行しないでください/);
+  assert.match(content, /- test: 最大 2 回まで実行できます（on_failure: implement）。/);
+  assert.match(
+    content,
+    /- review: 最大 2 回まで実行できます（on_failure: implement）。再試行は失敗に blocker、high が含まれる場合に限ります。/
+  );
+  assert.match(content, /未解決事項を利用者へ返してください/);
+});
+
+test("retry_policyを持たないWorkflowのコマンドにRetry policyセクションを含めない", async () => {
+  const registry = await loadWorkflowRegistry(fixturesDirectory);
+  const delegation = createOpenCodeDelegation(
+    { intent: "feature", goal: "利用者が設定を保存できる" },
+    registry
+  );
+
+  assert.doesNotMatch(delegation.command?.content ?? "", /## Retry policy/);
+});
+
 test("readyでないPlanはOpenCodeコマンドへ変換しない", async () => {
   const registry = await loadWorkflowRegistry(fixturesDirectory);
   const delegation = createOpenCodeDelegation({ intent: "feature" }, registry);
