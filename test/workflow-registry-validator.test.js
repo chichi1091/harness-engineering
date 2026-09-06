@@ -354,3 +354,90 @@ test("artifact型レジストリが未指定なら型参照の突合をスキッ
 
   assert.deepEqual(validateWorkflowRegistry([workflow], rest), []);
 });
+
+test("予算を持つWorkflowを許容する", () => {
+  const workflow = validWorkflow();
+  workflow.budget = {
+    max_total_tokens: 80000,
+    on_budget_exceeded: {
+      action: "stop",
+      output: ["completed_work", "remaining_work", "unresolved"]
+    }
+  };
+  workflow.steps[0].token_budget = 10000;
+
+  assert.deepEqual(validateWorkflowRegistry([workflow], knownPaths), []);
+});
+
+test("budgetの必須フィールドと語彙を検証する", () => {
+  const missingTotal = validWorkflow();
+  missingTotal.budget = { on_budget_exceeded: { action: "stop" } };
+  const missingPolicy = validWorkflow({
+    sourcePath: "workflows/missing-policy.yaml",
+    name: "missing-policy",
+    routing: { intents: ["missing-policy"], required_request_fields: ["goal"], priority: 100 }
+  });
+  missingPolicy.budget = { max_total_tokens: 80000 };
+  const unknownAction = validWorkflow({
+    sourcePath: "workflows/unknown-action.yaml",
+    name: "unknown-action",
+    routing: { intents: ["unknown-action"], required_request_fields: ["goal"], priority: 100 }
+  });
+  unknownAction.budget = {
+    max_total_tokens: 80000,
+    on_budget_exceeded: { action: "continue" }
+  };
+  const invalidOutput = validWorkflow({
+    sourcePath: "workflows/invalid-output.yaml",
+    name: "invalid-output",
+    routing: { intents: ["invalid-output"], required_request_fields: ["goal"], priority: 100 }
+  });
+  invalidOutput.budget = {
+    max_total_tokens: 80000,
+    on_budget_exceeded: { action: "stop", output: ["completed_work", ""] }
+  };
+  const nonObject = validWorkflow({
+    sourcePath: "workflows/non-object-budget.yaml",
+    name: "non-object-budget",
+    routing: { intents: ["non-object-budget"], required_request_fields: ["goal"], priority: 100 }
+  });
+  nonObject.budget = "80000";
+
+  assert.deepEqual(validateWorkflowRegistry([missingTotal, missingPolicy, unknownAction, invalidOutput, nonObject], knownPaths), [
+    "workflows/design.yaml: budget.max_total_tokens must be an integer greater than or equal to 1.",
+    "workflows/missing-policy.yaml: budget.on_budget_exceeded must be an object.",
+    'workflows/unknown-action.yaml: budget.on_budget_exceeded.action must be "stop".',
+    "workflows/invalid-output.yaml: budget.on_budget_exceeded.output must be an array of non-empty strings.",
+    "workflows/non-object-budget.yaml: budget must be an object."
+  ]);
+});
+
+test("token_budgetが1以上の整数でない場合を拒否する", () => {
+  const zero = validWorkflow();
+  zero.steps[0].token_budget = 0;
+  const fractional = validWorkflow({
+    sourcePath: "workflows/fractional-budget.yaml",
+    name: "fractional-budget",
+    routing: { intents: ["fractional-budget"], required_request_fields: ["goal"], priority: 100 }
+  });
+  fractional.steps[0].token_budget = 100.5;
+  const nonNumeric = validWorkflow({
+    sourcePath: "workflows/non-numeric-budget.yaml",
+    name: "non-numeric-budget",
+    routing: { intents: ["non-numeric-budget"], required_request_fields: ["goal"], priority: 100 }
+  });
+  nonNumeric.steps[0].token_budget = "10000";
+
+  assert.deepEqual(validateWorkflowRegistry([zero, fractional, nonNumeric], knownPaths), [
+    "workflows/design.yaml: steps[0].token_budget must be an integer greater than or equal to 1.",
+    "workflows/fractional-budget.yaml: steps[0].token_budget must be an integer greater than or equal to 1.",
+    "workflows/non-numeric-budget.yaml: steps[0].token_budget must be an integer greater than or equal to 1."
+  ]);
+});
+
+test("ワークフロー予算なしのステップtoken_budgetを許容する", () => {
+  const workflow = validWorkflow();
+  workflow.steps[0].token_budget = 5000;
+
+  assert.deepEqual(validateWorkflowRegistry([workflow], knownPaths), []);
+});

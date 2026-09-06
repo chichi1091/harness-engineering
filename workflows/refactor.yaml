@@ -8,9 +8,18 @@ routing:
     - target
     - goal
   priority: 100
+budget:
+  max_total_tokens: 70000
+  on_budget_exceeded:
+    action: stop
+    output:
+      - completed_work
+      - remaining_work
+      - unresolved
 steps:
   - id: design
     agent: agents/architect.yaml
+    token_budget: 10000
     input:
       - 対象
       - 改善目標
@@ -22,6 +31,7 @@ steps:
     gate: 変更対象と仕様維持条件が明確である
   - id: explore
     agent: agents/explorer.yaml
+    token_budget: 10000
     input:
       - リファクタリング方針
       - 調査依頼
@@ -32,6 +42,7 @@ steps:
     gate: 依存関係と回帰リスクが根拠付きで示されている
   - id: implement
     agent: agents/developer.yaml
+    token_budget: 25000
     input:
       - リファクタリング方針
       - 仕様維持の受入条件
@@ -43,6 +54,7 @@ steps:
     gate: 改善目標を満たし、外部仕様を変更していない
   - id: test
     agent: agents/test-engineer.yaml
+    token_budget: 10000
     input:
       - 仕様維持の受入条件
       - artifact: implementation-result
@@ -58,6 +70,7 @@ steps:
       max_attempts: 2
   - id: review
     agent: agents/reviewer.yaml
+    token_budget: 10000
     input:
       - リファクタリング方針
       - artifact: implementation-result
@@ -77,6 +90,7 @@ steps:
         - high
   - id: document
     agent: agents/documentation.yaml
+    token_budget: 5000
     input:
       - 実装結果
       - レビュー結果

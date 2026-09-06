@@ -54,6 +54,16 @@ Test/Reviewなど、失敗時に差し戻しを行うステップ（`on_failure`
 - 実行時の再試行回数は台帳に記録する（`src/execution/retry-policy.js` の `recordAttempt` / `attemptCount`）。再試行の可否は `decideStepRetry` が、上限到達時に利用者へ返す未解決事項付きの成果物は `buildRetryExhaustionArtifact` が担う
 - 上限に達した場合、または `retry_on` に合致しない失敗の場合は、`on_failure` による差し戻しを行わない。未解決事項を成果物として利用者へ返し、継続の判断は利用者が行う
 
+## Token Budget
+
+Workflowが消費できるトークン量の上限。正本は各Workflow YAMLの `budget` と、ステップごとの `token_budget` である。
+
+- Workflow全体の予算は `budget.max_total_tokens`。宣言する場合は超過時挙動 `on_budget_exceeded` が必須で、MVPの `action` は `stop`（安全な停止）のみ。停止時に返す項目を `output`（`completed_work` / `remaining_work` / `unresolved`）に記載する
+- ステップの上限は `token_budget`（任意）。予算は**上限であって配分ではない**。ステップ上限の合計が総額を超えてもよい
+- 実行時の消費は台帳に記録する（`src/execution/token-budget.js` の `createTokenLedger` / `recordSpend` / `totalTokensSpent`）。**再試行の消費も同じステップの台帳に蓄積**され、予算に含まれる
+- 判定は実行前チェック（`decideStepBudget`）。モデル呼び出しは中断できないため、実際の消費を記録し、次の実行前に上限に達していれば追加の呼び出しを行わない。総額の判定がステップ上限より先に行われる
+- 予算超過時はWorkflowを停止し（再試行は不可 — 予算超過での追加消費は予算に矛盾する）、`buildBudgetExhaustionArtifact` が完了済み・未完了・未解決事項を含む成果物を利用者へ返す。OpenCode AdapterはDelegationコマンドの Token budget セクションで上限と停止ルールを次のAgentへ伝える
+
 ## Execution Profile
 
 実行環境ごとに役割とモデルの割当を定義する `profiles/` のYAML。`assignments` は役割名を鍵とし、`provider`、`model`、`mode`（`readonly` または `write`）を持つ。

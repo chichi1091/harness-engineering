@@ -7,9 +7,18 @@ routing:
   required_request_fields:
     - goal
   priority: 100
+budget:
+  max_total_tokens: 40000
+  on_budget_exceeded:
+    action: stop
+    output:
+      - completed_work
+      - remaining_work
+      - unresolved
 steps:
   - id: design
     agent: agents/architect.yaml
+    token_budget: 15000
     input:
       - 利用者の目的
       - 制約
@@ -21,6 +30,7 @@ steps:
     gate: 設計方針と受入条件が検証可能である
   - id: explore
     agent: agents/explorer.yaml
+    token_budget: 10000
     input:
       - 設計メモ
       - 調査依頼
@@ -31,6 +41,7 @@ steps:
     gate: 既存実装との整合性が根拠付きで示されている
   - id: review
     agent: agents/reviewer.yaml
+    token_budget: 10000
     input:
       - artifact: design-result
         summary: 設計メモ
@@ -50,6 +61,7 @@ steps:
         - high
   - id: document
     agent: agents/documentation.yaml
+    token_budget: 5000
     input:
       - 設計メモ
       - 設計レビュー結果

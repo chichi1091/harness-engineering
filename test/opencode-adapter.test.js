@@ -112,6 +112,32 @@ test("artifact型参照を持たないWorkflowのコマンドにArtifact contrac
   assert.doesNotMatch(delegation.command?.content ?? "", /## Artifact contracts/);
 });
 
+test("予算を持つWorkflowのコマンドにToken budgetセクションを含める", async () => {
+  const registry = await loadWorkflowRegistry(projectWorkflowsDirectory);
+  const delegation = createOpenCodeDelegation(
+    { intent: "feature", goal: "利用者が設定を保存できる" },
+    registry
+  );
+
+  const content = delegation.command?.content ?? "";
+  assert.match(content, /## Token budget/);
+  assert.match(content, /このWorkflow全体で最大 80000 トークンまで使用できます/);
+  assert.match(content, /- design: 最大 10000 トークン（再試行の消費を含む）/);
+  assert.match(content, /- implement: 最大 40000 トークン（再試行の消費を含む）/);
+  assert.match(content, /上限に達した場合は追加のモデル呼び出しを行わずにWorkflowを停止してください/);
+  assert.match(content, /完了済み・未完了・未解決事項を成果物として利用者へ返し/);
+});
+
+test("予算を持たないWorkflowのコマンドにToken budgetセクションを含めない", async () => {
+  const registry = await loadWorkflowRegistry(fixturesDirectory);
+  const delegation = createOpenCodeDelegation(
+    { intent: "feature", goal: "利用者が設定を保存できる" },
+    registry
+  );
+
+  assert.doesNotMatch(delegation.command?.content ?? "", /## Token budget/);
+});
+
 test("readyでないPlanはOpenCodeコマンドへ変換しない", async () => {
   const registry = await loadWorkflowRegistry(fixturesDirectory);
   const delegation = createOpenCodeDelegation({ intent: "feature" }, registry);

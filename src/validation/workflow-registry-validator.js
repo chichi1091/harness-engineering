@@ -6,6 +6,13 @@
 const RISK_VOCABULARY = new Set(["low", "medium", "high"]);
 
 /**
+ * Actions a workflow may take when its token budget is exhausted. Only a
+ * safe stop exists: retrying on an exhausted budget would spend more
+ * tokens, which contradicts the budget itself.
+ */
+const BUDGET_EXCEEDED_ACTIONS = new Set(["stop"]);
+
+/**
  * Validates the semantic relationships in a loaded Workflow Registry.
  * It is pure: filesystem reads and YAML parsing belong to the caller.
  *
@@ -37,6 +44,7 @@ export function validateWorkflowRegistry(workflows, { agentPaths, commandPaths, 
     validateRequiredString(workflow.purpose, `${label}: purpose`, errors);
     validateReference(workflow.entry_command, commandPaths, `${label}: entry_command`, errors);
     validateRouting(workflow.routing, label, errors);
+    validateBudget(workflow.budget, label, errors);
     validateSteps(workflow.steps, { agentPaths, severityNames, artifactTypes }, label, errors);
     validateCompletion(workflow.completion, label, errors);
   }
@@ -148,6 +156,39 @@ function validateRiskLevels(risk, label, errors) {
   }
 }
 
+/**
+ * A workflow budget is optional; when declared it must be complete and
+ * actionable — a total cap without an exhaustion behavior is ambiguous at
+ * runtime. The budget is a cap, not an allocation: step budgets may sum
+ * beyond the total.
+ */
+function validateBudget(budget, label, errors) {
+  if (budget === undefined) return;
+  if (!isRecord(budget)) {
+    errors.push(`${label}: budget must be an object.`);
+    return;
+  }
+
+  const budgetLabel = `${label}: budget`;
+  if (typeof budget.max_total_tokens !== "number" || !Number.isInteger(budget.max_total_tokens) || budget.max_total_tokens < 1) {
+    errors.push(`${budgetLabel}.max_total_tokens must be an integer greater than or equal to 1.`);
+  }
+
+  const policy = budget.on_budget_exceeded;
+  if (!isRecord(policy)) {
+    errors.push(`${budgetLabel}.on_budget_exceeded must be an object.`);
+    return;
+  }
+
+  if (!BUDGET_EXCEEDED_ACTIONS.has(policy.action)) {
+    errors.push(`${budgetLabel}.on_budget_exceeded.action must be "stop".`);
+  }
+
+  if (policy.output !== undefined) {
+    validateStringArray(policy.output, `${budgetLabel}.on_budget_exceeded.output`, errors);
+  }
+}
+
 function validateSteps(steps, { agentPaths, severityNames, artifactTypes }, label, errors) {
   if (!Array.isArray(steps) || steps.length === 0) {
     errors.push(`${label}: steps must be a non-empty array.`);
@@ -171,6 +212,7 @@ function validateSteps(steps, { agentPaths, severityNames, artifactTypes }, labe
     validateArtifactEntries(step.input, artifactTypes, `${stepLabel}.input`, errors);
     validateArtifactEntries(step.output, artifactTypes, `${stepLabel}.output`, errors);
     validateRequiredString(step.gate, `${stepLabel}.gate`, errors);
+    validateStepTokenBudget(step, stepLabel, errors);
     validateRetryPolicy(step, { severityNames, stepLabel }, errors);
   }
 
@@ -182,6 +224,17 @@ function validateSteps(steps, { agentPaths, severityNames, artifactTypes }, labe
     if (typeof step.on_failure !== "string" || !previousStepIds.has(step.on_failure)) {
       errors.push(`${label}: steps[${index}].on_failure must reference an earlier step.`);
     }
+  }
+}
+
+/**
+ * A step token_budget is optional and independent of the workflow budget:
+ * a per-step cap alone still stops the workflow when the step exhausts it.
+ */
+function validateStepTokenBudget(step, stepLabel, errors) {
+  if (step.token_budget === undefined) return;
+  if (typeof step.token_budget !== "number" || !Number.isInteger(step.token_budget) || step.token_budget < 1) {
+    errors.push(`${stepLabel}.token_budget must be an integer greater than or equal to 1.`);
   }
 }
 

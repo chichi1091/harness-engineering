@@ -10,9 +10,18 @@ routing:
   risk:
     - medium
     - high
+budget:
+  max_total_tokens: 80000
+  on_budget_exceeded:
+    action: stop
+    output:
+      - completed_work
+      - remaining_work
+      - unresolved
 steps:
   - id: design
     agent: agents/architect.yaml
+    token_budget: 10000
     input:
       - 利用者の依頼
     output:
@@ -23,6 +32,7 @@ steps:
     gate: 実装対象と受入条件が明確である
   - id: explore
     agent: agents/explorer.yaml
+    token_budget: 10000
     input:
       - 設計メモ
       - 調査依頼
@@ -33,6 +43,7 @@ steps:
     gate: 変更箇所とリスクが根拠付きで示されている
   - id: implement
     agent: agents/developer.yaml
+    token_budget: 40000
     input:
       - 設計メモ
       - 受入条件
@@ -44,6 +55,7 @@ steps:
     gate: 受入条件に対応する実装がある
   - id: test
     agent: agents/test-engineer.yaml
+    token_budget: 10000
     input:
       - 受入条件
       - artifact: implementation-result
@@ -59,6 +71,7 @@ steps:
       max_attempts: 2
   - id: review
     agent: agents/reviewer.yaml
+    token_budget: 15000
     input:
       - 設計メモ
       - artifact: implementation-result
@@ -78,6 +91,7 @@ steps:
         - high
   - id: document
     agent: agents/documentation.yaml
+    token_budget: 5000
     input:
       - 実装結果
       - レビュー結果

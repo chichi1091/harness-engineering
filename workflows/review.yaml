@@ -7,9 +7,18 @@ routing:
   required_request_fields:
     - review_target
   priority: 100
+budget:
+  max_total_tokens: 30000
+  on_budget_exceeded:
+    action: stop
+    output:
+      - completed_work
+      - remaining_work
+      - unresolved
 steps:
   - id: explore
     agent: agents/explorer.yaml
+    token_budget: 10000
     input:
       - レビュー対象
       - 確認観点
@@ -20,6 +29,7 @@ steps:
     gate: 対象と根拠が確認されている
   - id: review
     agent: agents/reviewer.yaml
+    token_budget: 15000
     input:
       - レビュー対象
       - artifact: exploration-result
@@ -32,6 +42,7 @@ steps:
     gate: 根拠と重要度を含む判断が記録されている
   - id: document
     agent: agents/documentation.yaml
+    token_budget: 5000
     input:
       - レビュー結果
     output:

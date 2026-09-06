@@ -7,9 +7,18 @@ routing:
   required_request_fields:
     - question
   priority: 100
+budget:
+  max_total_tokens: 40000
+  on_budget_exceeded:
+    action: stop
+    output:
+      - completed_work
+      - remaining_work
+      - unresolved
 steps:
   - id: explore
     agent: agents/explorer.yaml
+    token_budget: 15000
     input:
       - 調査課題
       - スコープ
@@ -20,6 +29,7 @@ steps:
     gate: 調査した事実と推測が区別されている
   - id: synthesize
     agent: agents/architect.yaml
+    token_budget: 15000
     input:
       - 調査報告
       - 根拠
@@ -31,6 +41,7 @@ steps:
     gate: 推奨とトレードオフが根拠付きで示されている
   - id: document
     agent: agents/documentation.yaml
+    token_budget: 10000
     input:
       - 調査報告
       - 選択肢
