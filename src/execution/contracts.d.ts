@@ -18,6 +18,39 @@ export type StepRetryDecision = {
   reason: string;
 };
 
+export type WorkflowBudget = {
+  max_total_tokens: number;
+  on_budget_exceeded: {
+    action: "stop";
+    output?: readonly string[];
+  };
+};
+
+export type TokenLedger = {
+  readonly spent: Readonly<Record<string, number>>;
+};
+
+export type TokenBudgetDecision = {
+  status: "within_budget" | "exceeded";
+  scope?: "workflow" | "step";
+  limit?: number;
+  spent: number;
+  totalSpent: number;
+  reason: string;
+};
+
+export type BudgetExhaustionArtifact = {
+  type: "budget_exhausted";
+  workflow: string;
+  step: string;
+  total_tokens_spent: number;
+  max_total_tokens: number | null;
+  completed_work: readonly string[];
+  remaining_work: readonly string[];
+  unresolved: readonly string[];
+  message: string;
+};
+
 export type RetryExhaustionArtifact = {
   type: "retry_exhausted";
   workflow: string;

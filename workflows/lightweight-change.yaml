@@ -10,9 +10,18 @@ routing:
   priority: 100
   risk:
     - low
+budget:
+  max_total_tokens: 15000
+  on_budget_exceeded:
+    action: stop
+    output:
+      - completed_work
+      - remaining_work
+      - unresolved
 steps:
   - id: implement
     agent: agents/developer.yaml
+    token_budget: 10000
     input:
       - 依頼内容
       - 変更箇所の特定情報
@@ -23,6 +32,7 @@ steps:
     gate: 意図した変更が最小範囲で行われている
   - id: test
     agent: agents/test-engineer.yaml
+    token_budget: 5000
     input:
       - 依頼内容
       - artifact: implementation-result

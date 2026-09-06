@@ -11,9 +11,18 @@ routing:
   risk:
     - medium
     - high
+budget:
+  max_total_tokens: 60000
+  on_budget_exceeded:
+    action: stop
+    output:
+      - completed_work
+      - remaining_work
+      - unresolved
 steps:
   - id: triage
     agent: agents/architect.yaml
+    token_budget: 10000
     input:
       - 不具合報告
     output:
@@ -23,6 +32,7 @@ steps:
     gate: 再現条件または不足情報が明確である
   - id: explore
     agent: agents/explorer.yaml
+    token_budget: 10000
     input:
       - 問題定義
       - 調査依頼
@@ -33,6 +43,7 @@ steps:
     gate: 修正候補に根拠がある
   - id: implement
     agent: agents/developer.yaml
+    token_budget: 20000
     input:
       - 修正の受入条件
       - 原因仮説
@@ -44,6 +55,7 @@ steps:
     gate: 修正と再現テストの準備ができている
   - id: test
     agent: agents/test-engineer.yaml
+    token_budget: 10000
     input:
       - 修正の受入条件
       - artifact: implementation-result
@@ -58,6 +70,7 @@ steps:
       max_attempts: 2
   - id: review
     agent: agents/reviewer.yaml
+    token_budget: 10000
     input:
       - artifact: implementation-result
         summary: 実装結果
@@ -76,6 +89,7 @@ steps:
         - high
   - id: document
     agent: agents/documentation.yaml
+    token_budget: 5000
     input:
       - 実装結果
       - レビュー結果

@@ -139,6 +139,11 @@ function renderOpenCodeCommand(workflow, profile) {
     );
   }
 
+  const tokenBudgetLines = renderTokenBudgetLines(workflow);
+  if (tokenBudgetLines.length > 0) {
+    lines.push("", "## Token budget", ...tokenBudgetLines);
+  }
+
   if (profile) {
     lines.push("", "## Role assignments", ...describeRoleAssignments(profile, workflowRoles(workflow)));
   }
@@ -160,6 +165,34 @@ function renderArtifactContractLines(workflow) {
   }
 
   return [...types].sort().map(describeArtifactType).filter((line) => line !== "");
+}
+
+/**
+ * Renders the workflow's token budget as guidance for manual execution:
+ * the total cap, per-step caps, and the safe-stop behavior on exhaustion.
+ * Budgets are caps, not allocations — the agent records actual consumption
+ * per step and stops before any further model call once a cap is reached.
+ */
+function renderTokenBudgetLines(workflow) {
+  const budget = workflow.budget;
+  if (!budget) return [];
+
+  const lines = [`このWorkflow全体で最大 ${budget.max_total_tokens} トークンまで使用できます。予算は上限であり配分ではありません。`];
+
+  const stepBudgetLines = (workflow.steps ?? [])
+    .filter((step) => step?.token_budget !== undefined)
+    .map((step) => `- ${step.id}: 最大 ${step.token_budget} トークン（再試行の消費を含む）`);
+  if (stepBudgetLines.length > 0) {
+    lines.push("", "ステップごとの上限:", ...stepBudgetLines);
+  }
+
+  lines.push(
+    "",
+    "各ステップの実行前に消費トークンを確認し、上限に達した場合は追加のモデル呼び出しを行わずにWorkflowを停止してください。",
+    "停止時は完了済み・未完了・未解決事項を成果物として利用者へ返し、続行の判断を仰いでください。"
+  );
+
+  return lines;
 }
 
 function renderRetryPolicyLines(workflow) {

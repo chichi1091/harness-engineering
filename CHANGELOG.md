@@ -6,6 +6,7 @@ Harness Engineering の変更履歴。このファイルは v0.1.0-alpha のリ�
 
 ### Added
 
+- WorkflowへのToken Budget導入。Workflowに `budget`（`max_total_tokens` と超過時挙動 `on_budget_exceeded: { action: stop, output }`）、ステップに `token_budget` を宣言でき、`validate:workflows` が構造と語彙を検証する。実行時の消費は台帳（`src/execution/token-budget.js`: `createTokenLedger`/`recordSpend`/`decideStepBudget`）で追跡し、再試行の消費も含めて判定する。超過時はWorkflowを安全に停止し、完了済み・未完了・未解決事項を含む成果物（`buildBudgetExhaustionArtifact`）を利用者へ返す。OpenCode AdapterはDelegationコマンドの Token budget セクションで上限と停止ルールを次のAgentへ伝える
 - Execution Profile（`profiles/`）を導入。役割とモデル（provider/model）、権限モード（`readonly` / `write`）の割当を実行環境ごとに定義でき、正本の Agent 定義はモデル非依存を維持する
 - Profile意味検証（`npm run validate:profiles`）とPR CI品質ゲートへの追加
 - OpenCode Adapter: Profileの解釈（`.opencode/agent/` 用agent定義の値生成、Delegationコマンドへの役割割当反映）
