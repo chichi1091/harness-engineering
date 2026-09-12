@@ -85,6 +85,12 @@ export function createOpenCodeRuntimeAdapter({
       adapterName: name,
       ...(provider !== undefined ? { provider } : {}),
       ...(model !== undefined ? { model } : {}),
+      // Issue #22: the adapter options are the requested model — the
+      // provider/model that actually ran is reported separately and may
+      // differ once resolution policies exist.
+      ...(provider !== undefined && model !== undefined
+        ? { requestedProvider: provider, requestedModel: model }
+        : {}),
       ...overrides
     });
   }

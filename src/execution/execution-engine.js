@@ -39,6 +39,7 @@
 
 import { validateArtifact } from "../artifacts/artifact-schemas.js";
 import { saveArtifact } from "../artifacts/artifact-store.js";
+import { createModelExecutionRecord, toModelExecutionArtifact } from "./model-execution-tracking.js";
 import {
   buildRetryExhaustionArtifact,
   createRetryLedger,
@@ -164,21 +165,32 @@ export function validateWorkflowForExecution(workflow) {
  * `artifact_store_error` diagnostics and never abort the loop: a
  * persistence hiccup must not masquerade as a workflow failure.
  *
+ * Every execution is additionally observed as a Model Execution Record
+ * (Issue #22) on `result.modelExecutions` — which step, which attempt,
+ * which runtime/provider/model, status, error category, duration, and
+ * token usage as reported by the Runtime Adapter. When
+ * `trackModelExecutions` is enabled together with `artifactStore`, the
+ * records also persist as `model-execution-record` artifacts.
+ *
  * @param {{
  *   workflow: Record<string, unknown> & { name?: string, steps?: unknown },
  *   executeStep: StepExecutor,
  *   maxStepExecutions?: number,
  *   artifactStore?: import("../artifacts/contracts.js").ArtifactStore,
- *   executionId?: string
+ *   executionId?: string,
+ *   trackModelExecutions?: boolean
  * }} options
  * @returns {Promise<ExecutionResult>}
  */
-export async function runWorkflow({ workflow, executeStep, maxStepExecutions, artifactStore, executionId }) {
+export async function runWorkflow({ workflow, executeStep, maxStepExecutions, artifactStore, executionId, trackModelExecutions = false }) {
   if (typeof executeStep !== "function") {
     throw new Error("executeStep must be a function: the engine never invokes an agent runtime itself.");
   }
   if (artifactStore !== undefined && (typeof executionId !== "string" || executionId.trim() === "")) {
     throw new Error("executionId is required when artifactStore is provided.");
+  }
+  if (trackModelExecutions === true && artifactStore === undefined) {
+    throw new Error("trackModelExecutions requires an artifactStore to persist the records.");
   }
 
   const workflowName = isRecord(workflow) && typeof workflow.name === "string" ? workflow.name : "<unknown workflow>";
@@ -212,6 +224,8 @@ export async function runWorkflow({ workflow, executeStep, maxStepExecutions, ar
   const trace = [];
   /** @type {ExecutionDiagnostic[]} */
   const diagnostics = [];
+  /** @type {import("./contracts.js").ModelExecutionRecord[]} */
+  const modelExecutions = [];
 
   let retryLedger = createRetryLedger();
   let tokenLedger = createTokenLedger();
@@ -227,7 +241,7 @@ export async function runWorkflow({ workflow, executeStep, maxStepExecutions, ar
           code: EXECUTION_STOP_REASONS.BOUND_EXCEEDED,
           message: `execution exceeded its bound of ${bound} step executions; refusing to continue.`
         }],
-        state: { steps, recordsByStep, latestArtifacts, artifactsProduced, trace, diagnostics, tokenLedger }
+        state: { steps, recordsByStep, latestArtifacts, artifactsProduced, trace, diagnostics, tokenLedger, modelExecutions }
       });
     }
 
@@ -261,10 +275,15 @@ export async function runWorkflow({ workflow, executeStep, maxStepExecutions, ar
         stopReason: EXECUTION_STOP_REASONS.BUDGET_EXHAUSTED,
         stopArtifact,
         unresolved: stopArtifact.unresolved,
-        state: { steps, recordsByStep, latestArtifacts, artifactsProduced, trace, diagnostics, tokenLedger }
+        state: { steps, recordsByStep, latestArtifacts, artifactsProduced, trace, diagnostics, tokenLedger, modelExecutions }
       });
     }
 
+    // Timing for the Model Execution Record (Issue #22): the engine
+    // observes the invocation window itself; the adapter's reported
+    // durationMs (if any) stays authoritative for the runtime duration.
+    const startedAtIso = new Date().toISOString();
+    const startedAtMs = Date.now();
     const outcome = await invokeStep(executeStep, {
       workflowName,
       stepId: step.id,
@@ -272,6 +291,8 @@ export async function runWorkflow({ workflow, executeStep, maxStepExecutions, ar
       attempt,
       artifacts: Object.fromEntries(latestArtifacts)
     });
+    const endedAtIso = new Date().toISOString();
+    const measuredDurationMs = Date.now() - startedAtMs;
 
     const tokensSpent = normalizeSpend(outcome.tokensSpent);
     if (tokensSpent === null) {
@@ -318,6 +339,35 @@ export async function runWorkflow({ workflow, executeStep, maxStepExecutions, ar
       latestArtifacts.set(artifact.type, artifact);
     }
 
+    // Model Execution Record (Issue #22): what the harness observed
+    // about this AI execution. Always present on the result; persisted
+    // only when tracking is enabled together with a store.
+    const modelExecution = createModelExecutionRecord({
+      executionId: executionId ?? null,
+      request: { workflowName, stepId: step.id, attempt, step },
+      outcome: { ...outcome, status, failure },
+      startedAt: startedAtIso,
+      endedAt: endedAtIso,
+      measuredDurationMs
+    });
+    modelExecutions.push(modelExecution);
+
+    if (artifactStore !== undefined && trackModelExecutions === true) {
+      try {
+        await saveArtifact(artifactStore, {
+          artifactId: "model-execution-record",
+          executionId: executionId,
+          stepId: step.id,
+          artifact: toModelExecutionArtifact(modelExecution)
+        });
+      } catch (error) {
+        diagnostics.push({
+          code: "artifact_store_error",
+          message: `step "${step.id}": model execution record: ${error instanceof Error ? error.message : String(error)}`
+        });
+      }
+    }
+
     // Persist validated artifacts (Issue #29). The in-loop handoff above
     // stays authoritative for the running workflow; the store makes the
     // artifacts durable and trackable after the run ends.
@@ -345,7 +395,7 @@ export async function runWorkflow({ workflow, executeStep, maxStepExecutions, ar
           workflowName,
           status: "completed",
           stopReason: null,
-          state: { steps, recordsByStep, latestArtifacts, artifactsProduced, trace, diagnostics, tokenLedger }
+          state: { steps, recordsByStep, latestArtifacts, artifactsProduced, trace, diagnostics, tokenLedger, modelExecutions }
         });
       }
       index += 1;
@@ -364,7 +414,7 @@ export async function runWorkflow({ workflow, executeStep, maxStepExecutions, ar
         failedStep: step.id,
         failure,
         unresolved: failure?.unresolved ?? [],
-        state: { steps, recordsByStep, latestArtifacts, artifactsProduced, trace, diagnostics, tokenLedger }
+        state: { steps, recordsByStep, latestArtifacts, artifactsProduced, trace, diagnostics, tokenLedger, modelExecutions }
       });
     }
 
@@ -390,7 +440,7 @@ export async function runWorkflow({ workflow, executeStep, maxStepExecutions, ar
             code: EXECUTION_STOP_REASONS.UNKNOWN_FAILURE_TARGET,
             message: `step "${step.id}" declares on_failure "${String(step.on_failure)}" which is not an earlier step.`
           }],
-          state: { steps, recordsByStep, latestArtifacts, artifactsProduced, trace, diagnostics, tokenLedger }
+          state: { steps, recordsByStep, latestArtifacts, artifactsProduced, trace, diagnostics, tokenLedger, modelExecutions }
         });
       }
       index = targetIndex;
@@ -416,7 +466,7 @@ export async function runWorkflow({ workflow, executeStep, maxStepExecutions, ar
       failure,
       stopArtifact,
       unresolved: stopArtifact.unresolved,
-      state: { steps, recordsByStep, latestArtifacts, artifactsProduced, trace, diagnostics, tokenLedger }
+      state: { steps, recordsByStep, latestArtifacts, artifactsProduced, trace, diagnostics, tokenLedger, modelExecutions }
     });
   }
 }
@@ -526,7 +576,8 @@ function unexecutedStepIds(steps, recordsByStep) {
  *     artifactsProduced: readonly AgentArtifact[],
  *     trace: readonly import("./contracts.js").ExecutionTraceEntry[],
  *     diagnostics: readonly ExecutionDiagnostic[],
- *     tokenLedger: import("./contracts.js").TokenLedger
+ *     tokenLedger: import("./contracts.js").TokenLedger,
+ *     modelExecutions: readonly import("./contracts.js").ModelExecutionRecord[]
  *   }
  * }} options
  * @returns {ExecutionResult}
@@ -584,7 +635,9 @@ function buildResult({
     artifactsProduced: state?.artifactsProduced ?? [],
     stopArtifact: stopArtifact ?? null,
     unresolved: [...unresolved],
-    tokensSpent: state ? totalTokensSpent(state.tokenLedger) : 0
+    tokensSpent: state ? totalTokensSpent(state.tokenLedger) : 0,
+    // Model Execution Tracking (Issue #22): one record per AI execution
+    modelExecutions: state?.modelExecutions ?? []
   };
 }
 

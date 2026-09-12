@@ -120,22 +120,48 @@ export function toStepExecutor(adapter) {
  *   adapterName: string,
  *   provider?: string,
  *   model?: string,
+ *   requestedProvider?: string | null,
+ *   requestedModel?: string | null,
+ *   requestedTier?: string | null,
+ *   resolvedTier?: string | null,
  *   exitCode?: number | null,
  *   errorCategory?: import("./contracts.js").ErrorCategory,
  *   durationMs?: number | null,
- *   sessionId?: string
+ *   sessionId?: string,
+ *   escalation?: import("./contracts.js").RuntimeExecutionMetadata["escalation"],
+ *   fallback?: import("./contracts.js").RuntimeExecutionMetadata["fallback"]
  * }} metadata
  * @returns {import("./contracts.js").RuntimeExecutionMetadata}
  */
-export function buildRuntimeMetadata({ adapterName, provider, model, exitCode, errorCategory, durationMs, sessionId }) {
+export function buildRuntimeMetadata({
+  adapterName,
+  provider,
+  model,
+  requestedProvider,
+  requestedModel,
+  requestedTier,
+  resolvedTier,
+  exitCode,
+  errorCategory,
+  durationMs,
+  sessionId,
+  escalation,
+  fallback
+}) {
   const category = RUNTIME_ERROR_CATEGORIES.includes(errorCategory) ? errorCategory : undefined;
   return {
     runtime: adapterName,
     ...(provider !== undefined ? { provider } : {}),
     ...(model !== undefined ? { model } : {}),
+    ...(requestedProvider !== undefined ? { requestedProvider } : {}),
+    ...(requestedModel !== undefined ? { requestedModel } : {}),
+    ...(requestedTier !== undefined ? { requestedTier } : {}),
+    ...(resolvedTier !== undefined ? { resolvedTier } : {}),
     ...(exitCode !== undefined ? { exitCode } : {}),
     ...(category !== undefined ? { errorCategory: category } : {}),
     ...(durationMs !== undefined ? { durationMs } : {}),
-    ...(sessionId !== undefined ? { sessionId } : {})
+    ...(sessionId !== undefined ? { sessionId } : {}),
+    ...(escalation !== undefined ? { escalation } : {}),
+    ...(fallback !== undefined ? { fallback } : {})
   };
 }

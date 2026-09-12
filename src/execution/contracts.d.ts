@@ -283,4 +283,49 @@ export type ExecutionResult = {
   /** Unresolved items the user must judge (empty on completion). */
   unresolved: readonly string[];
   tokensSpent: number;
+  /** One Model Execution Record per AI execution, in execution order (Issue #22). */
+  modelExecutions: readonly import("./model-execution-tracking.js").ModelExecutionRecord[];
+};
+
+/**
+ * Model Execution Tracking (Issue #22): what the harness observed about
+ * one AI execution. Fields the Runtime Adapter did not report stay
+ * null — the record never invents values. escalation/fallback are
+ * reserved report shapes (populated by #23 and future tier policies).
+ */
+export type ModelExecutionRecord = {
+  executionId: string | null;
+  stepId: string;
+  attempt: number;
+  agent: string | null;
+  runtime: string | null;
+
+  requestedModel: { provider: string; model: string } | null;
+  resolvedProvider: string | null;
+  resolvedModel: string | null;
+  requestedTier: string | null;
+  resolvedTier: string | null;
+
+  startedAt: string | null;
+  endedAt: string | null;
+  durationMs: number | null;
+
+  status: "succeeded" | "failed";
+  errorCategory: string | null;
+  failureReason: string | null;
+  tokensSpent: number | null;
+
+  escalation: {
+    escalated: boolean;
+    fromTier?: string;
+    toTier?: string;
+    reason?: string;
+  } | null;
+  fallback: {
+    fromProvider?: string;
+    fromModel?: string;
+    toProvider?: string;
+    toModel?: string;
+    reason?: string;
+  } | null;
 };
