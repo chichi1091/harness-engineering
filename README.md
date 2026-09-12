@@ -133,6 +133,7 @@ git diff --check
 ├── quality-gates.yaml # 品質ゲートの正本宣言（Mechanical Verification）
 ├── src/decision-engine/ # Pure FunctionとしてのWorkflow選択
 ├── src/execution/   # 実行ループ（Execution Engine）とRetry/Budget/Tierの純粋関数
+├── src/guardrails/  # 操作レベルの実行時強制（filesystem/shell/git/network/secrets）
 ├── src/verification/ # 品質ゲートの統一実行と機械判定（Verification Engine）
 ├── src/adapters/opencode/ # OpenCode向けRegistry・Profile読込とPlan変換（CLI非実行）
 ├── src/runtimes/opencode/ # OpenCodeコマンド配置（CLI非実行）

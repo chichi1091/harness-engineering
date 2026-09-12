@@ -147,7 +147,18 @@ Economy → 確信あり → 完了
 - 実効権限は役割の宣言とProfileの `mode` の交差である。`readonly` 割当は `edit` と `write` を `deny` に狭める。**Profile が役割の deny を緩めることはできない**
 - OpenCode Adapter は実効権限を生成Agent定義の `tools:` ブロックへ変換する（例: read-only役割は `read: true` / `edit: false` / `write: false`）
 - これにより Explorer の「リポジトリを変更してはならない」、Reviewer の「実装変更は行わない」という制約が、Prompt上の指示ではなくランタイムレベルで強制される
-- 既知の限界: shell実行（bash）は本モデルの対象外であり、読み取り専用コマンドと書込コマンドの区別はランタイムのサンドボックスに依存する
+- 操作レベルの実行時強制（shell / git / network / secrets 等）は Action Guardrails（次節）が担う
+
+## Action Guardrails
+
+操作レベルの実行時強制（`src/guardrails/`）。filesystem / shell / git / network / secrets / external の操作を `enforceAction` が機械判定し、違反はExecution LoopのStepFailureになる。
+
+- **Policy宣言**: Profileの `action_policy` で操作面ごとの許可を宣言する（`shell.execute`、`git.allow_push`、`network.allowed_hosts`、`filesystem.write_paths` 等）。**deny-by-default**: 宣言のない操作は拒否される。宣言は `validateActionPolicy` が検証され、`mergeActionPolicies` の合成は縮小方向のみ（許可を広げられない）
+- **判定と権限合成**: filesystem系は Issue #6 の実効権限（`resolveEffectivePermissions` の結果）と突合し、それ以外の操作面はPolicyのみで判定する。重複する権限機構は存在しない
+- **destructive既定拒否**: `force-push` / `reset` / `clean` / `rm -rf` / `dd` 等の破壊的操作は既定で拒否され、人間の承認トークン（`approvals`、例: `"git.force-push"`）でのみ昇格する。filesystem削除も同様
+- **secrets**: secrets操作は常に拒否（承認でも緩められない）。shell / network / external への送出payloadが既知の認証情報形状に一致した場合も拒否され、検出値は違反メッセージに出力されない
+- **untrusted content**: 外部コンテンツは `wrapUntrusted` が境界マーカーで包む。マーカーを含む外部テキストの取り込み、閉じられていないenvelopeの混在は `validateUntrustedBoundary` が機械的に検出する（信頼済み指示と混在しない構造的保証。注入文の完全検出はNon-goal）
+- **Execution Loop統合**: 拒否は `buildActionViolationFailure` により StepFailure（severitiesなし。同じ操作の再試行が再度拒否される旨をunresolvedに明記）に変換され、`executeStep` の失敗outcomeとして返る。承認待ちの違反は `approvable` に必要なトークンを運ぶ
 
 ## Artifact
 

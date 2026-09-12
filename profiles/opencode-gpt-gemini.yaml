@@ -32,3 +32,17 @@ model_policy:
     - when: low_confidence
       tier: standard
   max_escalations: 2
+
+action_policy:
+  shell:
+    execute: deny
+  git:
+    allow_push: false
+    allow_destructive: false
+  network:
+    allowed_hosts: []
+  external:
+    allowed_services: []
+  filesystem:
+    allow_delete: false
+    write_paths: []

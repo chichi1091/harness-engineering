@@ -1,4 +1,5 @@
 import { ESCALATION_CONDITIONS } from "../execution/model-tier.js";
+import { validateActionPolicy } from "../guardrails/action-policy.js";
 
 /**
  * Validates semantic relationships in loaded Execution Profiles.
@@ -34,6 +35,7 @@ export function validateProfileRegistry(profiles, { agentNames }) {
 
     validateModelTiers(profile.model_tiers, label, errors);
     validateModelPolicy(profile.model_policy, profile.model_tiers, label, errors);
+    validateProfileActionPolicy(profile.action_policy, label, errors);
 
     if (!isRecord(profile.assignments)) {
       errors.push(`${label}: assignments must be an object.`);
@@ -123,6 +125,18 @@ function validateModelPolicy(policy, tiers, label, errors) {
 
   if (typeof policy.max_escalations !== "number" || !Number.isInteger(policy.max_escalations) || policy.max_escalations < 1) {
     errors.push(`${label}: model_policy.max_escalations must be an integer greater than or equal to 1.`);
+  }
+}
+
+/**
+ * action_policy is optional; when declared its vocabulary is validated by
+ * the shared guardrails validator so the Profile and the runtime judge
+ * the same shapes (Issue #27).
+ */
+function validateProfileActionPolicy(policy, label, errors) {
+  if (policy === undefined) return;
+  for (const error of validateActionPolicy(policy)) {
+    errors.push(`${label}: ${error}`);
   }
 }
 
