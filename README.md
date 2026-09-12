@@ -28,6 +28,27 @@ Harness Engineering は、複数の AI を役割ごとに協調させ、ソフ�
 
 標準の機能開発フローは、Architect → Explorer → Developer → Test Engineer → Reviewer → Documentation です。
 
+## harness plan(実行前の計画確認)と Plan/Run 分離
+
+実行前に「何が・どの順で・どの構成で」行われるかを確認できます。Plan生成は**副作用ゼロ**(Decision読み取りのみ。ファイル変更・プロセス実行・LLM呼出は一切なし)。
+
+```sh
+node bin/harness.js plan "ログインAPIにJWT認証を追加してください" --intent feature
+node bin/harness.js plan "..." --intent feature --json            # 機械可読出力
+node bin/harness.js plan "..." --intent feature --output plan.json  # Planの保存
+```
+
+PlanにはWorkflow/Steps(役割と順序)/Models(planned)/Token Budget/Retry Policy/Fallback Policy/Guardrails概要/Verification Gates、そして `planId` と `planHash` が含まれます。
+
+承認はPlanファイルに `approved: true` を書くだけです(hashは不変)。承認済みPlanは `harness run --plan` で**同一内容のまま**実行され、改変(hash不一致)や未承認のPlanは実行前に拒否されます。
+
+```sh
+# 承認(人間が実施)
+node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('plan.json','utf8'));p.approved=true;fs.writeFileSync('plan.json',JSON.stringify(p,null,2))"
+# 同一Planの実行
+node bin/harness.js run --plan plan.json --non-interactive
+```
+
 ## harness run(One Command実行)
 
 目的の自然文を渡すと、Decision EngineによるWorkflow選択からExecution Engineの実行、Mechanical Verification(#28)、Retry/Fallback(#23)、Model Execution Tracking(#22)、Artifact Store(#29)への永続化までを1コマンドで実行します。
