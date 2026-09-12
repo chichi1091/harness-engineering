@@ -113,13 +113,11 @@ scope: 現在利用しているAの機能のうち、実際に使っている範
 
 ## 品質ゲート
 
-Pull Requestでは、単体テスト、YAML構文検証、Workflow Registryの意味検証、Profileの意味検証、`git diff --check` を自動実行します。ローカルでは次を実行できます。
+Pull Requestでは、Mechanical Verification（`npm run verify`）経由で全品質ゲートを統一実行し、`git diff --check` を自動実行します。ゲートの正本は `quality-gates.yaml` で、実行結果は失敗ゲート一覧と再検証方法を含む機械判定可能なレポートとして返ります（AI修正ループからも同じEngineを消費します）。
 
 ```sh
-npm test
-npm run validate:yaml
-npm run validate:workflows
-npm run validate:profiles
+npm run verify        # 品質ゲートの統一実行（YAML/Workflow/Profile検証 + 単体テスト）
+npm run validate:gates # quality-gates.yaml 宣言の意味検証
 git diff --check
 ```
 
@@ -132,11 +130,14 @@ git diff --check
 ├── commands/        # 利用者の依頼をワークフローへ結び付ける入口
 ├── workflows/       # 役割の順序、入出力、ゲート、on_failureとretry_policy
 ├── profiles/        # 実行環境ごとの役割→モデル割当（Execution Profile）
+├── quality-gates.yaml # 品質ゲートの正本宣言（Mechanical Verification）
 ├── src/decision-engine/ # Pure FunctionとしてのWorkflow選択
 ├── src/execution/   # 実行ループ（Execution Engine）とRetry/Budget/Tierの純粋関数
+├── src/verification/ # 品質ゲートの統一実行と機械判定（Verification Engine）
 ├── src/adapters/opencode/ # OpenCode向けRegistry・Profile読込とPlan変換（CLI非実行）
 ├── src/runtimes/opencode/ # OpenCodeコマンド配置（CLI非実行）
-├── src/runtimes/mock/     # StepExecutor Portの参照実装（テスト・例で使用）
+├── src/runtimes/node/     # Command RunnerのNode実装（プロセス実行）
+├── src/runtimes/mock/     # StepExecutor / Command Runnerの参照実装（テスト・例で使用）
 ├── test/             # 各層の単体テストとExecution Loopの統合テスト
 └── docs/            # 設計と用語
 ```

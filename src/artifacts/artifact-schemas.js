@@ -20,7 +20,8 @@ export const ARTIFACT_TYPES = [
   "exploration-result",
   "implementation-result",
   "test-result",
-  "review-result"
+  "review-result",
+  "verification-result"
 ];
 
 const ENVELOPE_SUMMARY = "type / produced_by / unresolved";
@@ -90,6 +91,34 @@ const SCHEMAS = {
       }
       const findings = optionalList(artifact, "findings", errors);
       requireItemFields(findings, ["severity", "location", "problem"], "findings", errors);
+      return errors;
+    }
+  },
+  "verification-result": {
+    summary: "status(passed or failed), gates(id, status), rerun_command",
+    validate(artifact) {
+      const errors = [];
+      if (artifact.status !== "passed" && artifact.status !== "failed") {
+        errors.push('verification-result: "status" must be "passed" or "failed".');
+      }
+      if (artifact.rerun_command !== undefined && !isNonEmptyString(artifact.rerun_command)) {
+        errors.push('verification-result: "rerun_command" must be a non-empty string when present.');
+      }
+      const gates = requireList(artifact, "gates", errors);
+      if (Array.isArray(gates)) {
+        gates.forEach((gate, index) => {
+          if (!isRecord(gate)) {
+            errors.push(`gates[${index}] must be an object.`);
+            return;
+          }
+          if (!isNonEmptyString(gate.id)) {
+            errors.push(`gates[${index}].id must be a non-empty string.`);
+          }
+          if (!isNonEmptyString(gate.status)) {
+            errors.push(`gates[${index}].status must be a non-empty string.`);
+          }
+        });
+      }
       return errors;
     }
   }

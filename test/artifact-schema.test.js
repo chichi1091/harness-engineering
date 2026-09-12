@@ -16,13 +16,14 @@ function envelope(type, overrides = {}) {
   };
 }
 
-test("型レジストリはIssue候補の5型に固定される", () => {
+test("型レジストリは登録済みの6型に固定される", () => {
   assert.deepEqual(ARTIFACT_TYPES, [
     "design-result",
     "exploration-result",
     "implementation-result",
     "test-result",
-    "review-result"
+    "review-result",
+    "verification-result"
   ]);
 });
 

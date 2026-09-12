@@ -40,6 +40,24 @@ OpenCode Adapter MVPは、Workflow YAMLの読込、Registry構築、DecisionCont
 
 OpenCode Executor MVPは、Adapterが返したOpenCodeコマンドのパスと内容を `.opencode/commands/` へ安全に配置する副作用層である。CLI実行とAIモデル呼出は行わない。詳細は [OpenCode Executor](runtimes/opencode.md) を参照する。
 
+## Mechanical Verification
+
+品質ゲート(formatter / linter / type check / build / test などの機械的検証)の正本は `quality-gates.yaml` であり、実行の本体はVerification Engine（`src/verification/verification-engine.js`）である。Engineは `runCommand` Portだけをランタイムへの窓口とし、プロセス起動は行わない。
+
+```text
+quality-gates.yaml（宣言） + Command Runner Port
+        ↓
+Verification Engine（実行と機械判定）
+        ↓
+Command Runner（Node実プロセス / Mock） → CI・AI修正ループが消費
+```
+
+- 宣言されたゲートを順次実行し、各ゲートを exit code で機械判定する。`policy.on_failure: continue`（既定）は全ゲート実行で失敗を一括返却、`stop` は最初の失敗で打ち切り（残りは `not_run`）
+- レポートは `status`（passed / failed / invalid）、`failedGates`、`notRunGates`、失敗出力の要点（末尾切り詰め）を含み、機械的に判定できる
+- 失敗レポートは共通Schemaの `verification-result` 成果物と、Execution Engineの `StepFailure`（失敗ゲート一覧と再検証コマンド `npm run verify` を含む）へ変換できる
+- CIとローカルは同じEngineを `npm run verify` で消費する。Engineが正本の実行主体であり、CIは消費者にすぎない
+- AI修正ループとの統合: Test Engineerステップのランタイムが `runVerification` を呼び、NGなら失敗outcomeを返す。以降の差し戻し・再検証はExecution Engineの `on_failure` / `retry_policy` 回路が担う
+
 ## Execution EngineとRuntime境界
 
 Execution Engine（`src/execution/execution-engine.js`）は、特定のAIランタイムに依存しない。Engineがランタイムに要求するのは、1ステップ（=1 Agent呼出）を実行して結果を報告する `executeStep` 関数だけである。

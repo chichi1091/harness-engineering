@@ -26,17 +26,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run unit tests
-        run: npm test
+      - name: Run mechanical verification
+        run: npm run verify
 
-      - name: Validate YAML
-        run: npm run validate:yaml
-
-      - name: Validate Workflow Registry
-        run: npm run validate:workflows
-
-      - name: Validate Profiles
-        run: npm run validate:profiles
+      - name: Validate quality gates declaration
+        run: npm run validate:gates
 
       - name: Check pull request diff
         run: git diff --check "origin/${{ github.base_ref }}...HEAD"

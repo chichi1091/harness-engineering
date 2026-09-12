@@ -60,6 +60,16 @@ Developer → Test Engineer → NG → Developer（修正）→ Test Engineer（
 - **成果物の検証**: Stepが返したArtifactは共通Schema（`validateArtifact`）で検証され、不正な成果物での成功は失敗として扱われる。後続Stepは、それまでに生成された最新のArtifactを入力として受け取る
 - **Runtime境界**: 実際のAgent呼出は `executeStep` の実装だけが行う。参照実装はMock Runtime（`src/runtimes/mock/mock-step-executor.js`）。OpenCodeなど実ランタイムの `executeStep` 実装は後続Issue
 
+## Mechanical Verification
+
+機械的検証（formatter / linter / type check / build / test 相当）を宣言し、統一的に実行・判定する仕組み。正本は `quality-gates.yaml`、実行は `src/verification/verification-engine.js` の `runVerification`。
+
+- **ゲート宣言**: `commands` は `id` / `command` / `args`（/ `title`）の列挙。任意コマンドを受け入れるため、検証ツールの追加は宣言の追加で済む。`policy.on_failure` は `continue`（既定・全ゲート実行）または `stop`（fail-fast）。宣言の意味検証は `npm run validate:gates`
+- **機械判定**: 各ゲートは exit code で判定される。レポートは `status`（passed / failed / invalid）、`failedGates`、`notRunGates`、失敗ゲートの出力要点を含む。実行不能なゲート（バイナリ欠落・タイムアウト含む）は「失敗」として扱う
+- **AI修正ループ**: 失敗レポートは `buildVerificationArtifact`（共通Schema `verification-result`）と `buildVerificationFailure`（Execution Engineのfailure。失敗ゲートと再検証コマンド `npm run verify` を含む）に変換でき、「実装 → 検証 → NG → 修正 → 再検証」のNG検知をAIが構造的に消費できる
+- **Runtime境界**: プロセス実行は `runCommand` Port（Node実装 `src/runtimes/node/`、テスト用Mock `src/runtimes/mock/`）に分離され、Coreはランタイム非依存を維持する
+- **CI**: `.github/workflows/quality.yml` は `npm run verify` 経由で同じEngineを消費する
+
 ## 実行の部品
 
 `src/execution/` の純粋関数群は、実行時規則の判断を担う。正本（Workflow YAML / Profile YAML）は定義に、機械的な判断はこれらの関数に、実行はExecution Engineに、それぞれ一元化されている。
@@ -154,6 +164,7 @@ Agent間で受け渡す構造化成果物は共通Schema（`src/artifacts/artifa
 | `implementation-result` | Developer | `changed_files`(path, reason) |
 | `test-result` | Test Engineer | `tests`(executed(name, outcome) または pending(name, reason) のどちらか非空) |
 | `review-result` | Reviewer | `decision`(approve/reject)、`findings`(severity, location, problem) |
+| `verification-result` | Test Engineer 等 | `status`(passed/failed)、`gates`(id, status) |
 
 Workflowの `input` / `output` エントリは、任意記述の文字列または `{ artifact: <型ID>, summary }` のオブジェクト。`validate:workflows` が型IDを登録済みSchemaと突合する。OpenCode Adapterは選択Workflowが使う型の必須フィールド一覧をDelegationコマンドの Artifact contracts セクションとして次のAgentへ引き渡す。`validateArtifact(artifact)` が個々の成果物の検証を担う。
 
