@@ -10,6 +10,9 @@ import { createOpenCodeRuntimeAdapter } from "../src/runtimes/opencode/opencode-
 import { createFallbackRuntimeAdapter } from "../src/runtimes/fallback-runtime-adapter.js";
 import { createMockRuntimeAdapter } from "../src/runtimes/mock/mock-runtime-adapter.js";
 import { resolveTierModel } from "../src/execution/model-tier.js";
+import { decide } from "../src/decision-engine/decision-engine.js";
+import { createExecutionPlan } from "../src/run/execution-plan.js";
+import { formatExecutionPlan } from "../src/run/format-run-result.js";
 import { runHarness } from "../src/run/run-harness.js";
 import { formatRunResult } from "../src/run/format-run-result.js";
 
@@ -47,7 +50,7 @@ Options:
 
 function parseArgs(argv) {
   const options = { command: null, goal: [], flags: {} };
-  const flagKeys = ["intent", "risk", "runtime", "profile", "provider", "model", "fallbacks", "gates", "verify-step", "artifacts-dir", "plan", "execution-id", "project-root"];
+  const flagKeys = ["intent", "risk", "runtime", "profile", "provider", "model", "fallbacks", "gates", "verify-step", "artifacts-dir", "plan", "execution-id", "project-root", "output"];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "run" && options.command === null) {
@@ -56,6 +59,7 @@ function parseArgs(argv) {
     }
     if (arg === "--non-interactive") { options.flags.nonInteractive = true; continue; }
     if (arg === "--no-verify") { options.flags.noVerify = true; continue; }
+    if (arg === "--json") { options.flags.json = true; continue; }
     if (arg.startsWith("--")) {
       const key = arg.slice(2);
       if (!flagKeys.includes(key)) {
@@ -139,14 +143,119 @@ function composeRuntime({ runtime, profile, projectRoot, timeoutMs, fallbackCand
 
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
-  const options = parseArgs(rest);
-  options.command = command;
+  if (command === "plan") {
+    await planCommand(rest);
+    return;
+  }
+  if (command === "run") {
+    await runCommand(rest);
+    return;
+  }
+  console.error(USAGE);
+  process.exitCode = 2;
+}
 
-  if (command !== "run") {
+/**
+ * harness plan (Issue #34): Decision-only. Builds the execution plan
+ * from existing configuration and renders it. NO side effects: no file
+ * writes (unless --output is given), no process execution, no network.
+ */
+async function planCommand(rest) {
+  const options = parseArgs(rest);
+  const projectRoot = resolve(options.flags["project-root"] ?? process.cwd());
+
+  if (options.goal === "") {
     console.error(USAGE);
     process.exitCode = 2;
     return;
   }
+
+  const workflowRegistry = await loadWorkflowRegistry(join(projectRoot, "workflows"));
+
+  let profile = null;
+  if (options.flags.profile !== undefined) {
+    const profilesDirectory = join(projectRoot, "profiles");
+    const { readdir } = await import("node:fs/promises");
+    const profileFiles = (await readdir(profilesDirectory)).filter((name) => /\.ya?ml$/.test(name));
+    for (const filename of profileFiles) {
+      const parsed = parse(await readFile(join(profilesDirectory, filename), "utf8"));
+      if (parsed?.name === options.flags.profile) profile = parsed;
+    }
+    if (profile === null) {
+      console.error(`Profile not found: ${options.flags.profile}`);
+      process.exitCode = 2;
+      return;
+    }
+  }
+
+  const request = {
+    intent: options.flags.intent,
+    risk: options.flags.risk,
+    goal: options.goal
+  };
+  const decision = decide({ request, workflowRegistry });
+
+  if (decision.status !== "ready" || decision.selectedWorkflow === null) {
+    const details = decision.clarification
+      ? `${decision.clarification.message} 必要な入力: ${decision.clarification.missing_fields.join("、")}`
+      : decision.diagnostics.map((diagnostic) => diagnostic.message).join(" ");
+    console.error(`実行するWorkflowを決定できませんでした。${details}`.trim());
+    process.exitCode = 2;
+    return;
+  }
+
+  const workflow = workflowRegistry.find((workflow) => workflow.name === decision.selectedWorkflow.name);
+  const fallbackCandidates = (options.flags.fallbacks ?? "")
+    .split(",").map((text) => text.trim()).filter((text) => text !== "")
+    .map(parseCandidate);
+
+  let verification = null;
+  if (options.flags.noVerify !== true) {
+    const gatesFile = options.flags.gates ?? join(projectRoot, "quality-gates.yaml");
+    const gates = parse(await readFile(gatesFile, "utf8"));
+    verification = {
+      stepId: options.flags["verify-step"] ?? "test",
+      gates: (gates.commands ?? []).map((command) => command.id)
+    };
+  }
+
+  const plan = createExecutionPlan({
+    goal: options.goal,
+    intent: options.flags.intent ?? decision.selectedWorkflow.name,
+    risk: options.flags.risk,
+    workflow,
+    profile,
+    runtimeName: options.flags.runtime ?? "mock",
+    fallbackCandidates,
+    guardrailsSummary: {
+      filesystem: "restricted (delete denied)",
+      shell: "restricted (only the runtime CLI launch is allowed)",
+      git: "restricted (push/destructive denied)",
+      network: "restricted (no hosts allowed)",
+      external: "restricted",
+      secrets: "denied"
+    },
+    verification
+  });
+
+  if (options.flags.json === true) {
+    console.log(JSON.stringify(plan, null, 2));
+  } else {
+    for (const line of formatExecutionPlan(plan)) {
+      console.log(line);
+    }
+  }
+
+  if (options.flags.output !== undefined) {
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(resolve(options.flags.output), `${JSON.stringify(plan, null, 2)}\n`, "utf8");
+    console.log(`Plan saved: ${resolve(options.flags.output)}`);
+  }
+  process.exitCode = 0;
+}
+
+async function runCommand(rest) {
+  const options = parseArgs(rest);
 
   const projectRoot = resolve(options.flags["project-root"] ?? process.cwd());
 
@@ -157,7 +266,9 @@ async function main() {
     plan = JSON.parse(await readFile(resolve(options.flags.plan), "utf8"));
   }
 
-  const effectiveGoal = options.goal !== "" ? options.goal : plan?.goal;
+  // The plan may carry the goal either at the top level (minimal
+  // contract) or under task.goal (#34 plan shape).
+  const effectiveGoal = options.goal !== "" ? options.goal : plan?.task?.goal ?? plan?.goal;
   if (typeof effectiveGoal !== "string" || effectiveGoal.trim() === "") {
     console.error(USAGE);
     process.exitCode = 2;

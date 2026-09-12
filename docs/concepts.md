@@ -128,6 +128,16 @@ Fallback Runtime Adapter → 次候補で再実行
 - **追跡(#22)**: Fallback Runtime Adapterは全候補試行を `outcome.runtime.fallbackChain` / `fallbackCount` / `fallback` として報告し、Model Execution Recordへそのまま転記される(original→to provider/model、reason、count、attempts、最終結果)
 - **Guardrails維持**: delegate生成は呼び出し側が同一のGuarded Command Runner構成を注入する(#32と同構成)。Providerが変わってもGuardrailsの強度は変わらず、拒否は `guardrail_violation`(非対象)として返る
 
+## Execution Plan
+
+Goal → Decision Engine の出力を実行可能な中間表現として永続化したもの（Issue #34、`src/run/execution-plan.js`）。PlanとRunの分離により、実行前に人間が計画を確認・承認できる。
+
+- **内容**: `task`（goal/intent/risk）、`workflow`（name/purpose）、`steps`（stepId/role/gate/tokenBudget/dependencies）、`models`（roleごとの planned provider/model/tier — **実行時の解決結果ではない**）、`runtime`、`tokenBudget`、`retryPolicies`、`fallbackPolicy`、`guardrailsSummary`、`verification`
+- **Plan Integrity**: `planHash` は実行構成部分のcanonical SHA-256。`verifyPlanIntegrity` が再計算照合を行い、承認後の改変を検出する。`approved` / `createdAt` 等の簿記項目はhash対象外（承認してもhash不変）
+- **Plan → Run**: `harness run --plan <file>` は承認済みPlanのhash検証後に**同一Plan**を実行する。Plan駆動ではDecision Engineを再実行しない
+- **Artifact統合(#29)**: `execution-plan` 型（planId/workflow必須）としてArtifact Storeへ保存できる
+- **#34/#35/#37の境界**: 過去実行の検索(#35)、PR作成(#37)、Issue読取(#38)は含まない。Plan ID / Execution IDで後から関連付け可能な構造のみ
+
 ## Context Handoff
 
 Agent間のContext受け渡しの基本方針。重複したToken消費（同じコードや会話履歴を各Agentが読み直す）を抑えるため、**会話履歴やコード全文ではなく構造化Artifactを基本の受け渡し単位**とする。

@@ -22,7 +22,22 @@ Goal / 承認済みPlan
 
 - CLIはDecision/Executionの新規ロジックを含まない。intent解決のAI化(#38等)は将来、Decision Engineの前段に接続する
 - 承認済みPlan(`approved: true`)のみ実行する(#34 harness plan との最小契約)
-- Exit code: 0=成功 / 1=実行失敗・停止 / 2=入力不正・Workflow決定不能 / 3=Plan未承認
+- Exit code: 0=成功 / 1=実行失敗・停止 / 2=入力不正・Workflow決定不能 / 3=Plan未承認・改変検出
+
+## Plan / Run 分離（#34）
+
+`harness plan` は Goal → Decision Engine → Execution Plan の生成までを行い、副作用を一切発生させない。`harness run --plan <file>` は承認済みPlanの `planHash` を検証し、**同一内容のPlan**だけを実行する。
+
+```text
+Goal → Decision Engine → Execution Plan (planId / planHash / steps / models[planned] / policies)
+                                              ↓ Human Approval (approved: true, hash不変)
+                                       harness run --plan → Execution
+```
+
+- Plan生成(`src/run/execution-plan.js`)は純粋: node:fs も child_process も使わず、与えられた構成からPlanを構築してハッシュ化するだけ
+- Plan駆動の実行ではDecision Engineを再実行しない — 承認済みPlanのWorkflow/Stepsをそのまま実行する
+- 改変検出: 承認後に内容が変わっている場合、hash不一致(`Plan改変を検出`)で実行を拒否する
+- Plan表示のModelsは `planned` 承認前の予定であり、実際の解決は実行時の Model Execution Tracking（#22）が正本
 
 ## MVP の構造
 

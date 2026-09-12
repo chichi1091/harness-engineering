@@ -27,6 +27,7 @@
 
 import { decide } from "../decision-engine/decision-engine.js";
 import { runWorkflow } from "../execution/execution-engine.js";
+import { verifyPlanIntegrity } from "./execution-plan.js";
 import { runVerification, buildVerificationArtifact, buildVerificationFailure } from "../verification/verification-engine.js";
 
 export const EXIT_CODES = Object.freeze({
@@ -75,10 +76,29 @@ export async function runHarness({
     };
   }
 
+  // --- Plan integrity (#34): a plan carrying a planHash must match its
+  // content. A tampered or diverging plan is refused instead of being
+  // silently re-executed. Legacy minimal plans (no hash) skip this.
+  let planDrivenWorkflowName = null;
+  if (plan !== null && typeof plan.planHash === "string" && plan.planHash !== "") {
+    const integrity = verifyPlanIntegrity(plan);
+    if (!integrity.valid) {
+      return {
+        exitCode: EXIT_CODES.PLAN_NOT_APPROVED,
+        decision: null,
+        workflowName: plan.workflow?.name ?? null,
+        executionId: executionId ?? null,
+        result: null,
+        message: `Plan改変を検出しました。同一Planを実行するには再承認が必要です。${integrity.errors.join(" ")}`
+      };
+    }
+    planDrivenWorkflowName = typeof plan.workflow?.name === "string" ? plan.workflow.name : null;
+  }
+
   // --- Request assembly: CLI flags win, plan fields fill the gaps.
-  const effectiveGoal = firstNonEmpty(goal, plan?.goal);
-  const effectiveIntent = firstNonEmpty(intent, plan?.intent);
-  const effectiveRisk = firstNonEmpty(risk, plan?.risk);
+  const effectiveGoal = firstNonEmpty(goal, plan?.task?.goal, plan?.goal);
+  const effectiveIntent = firstNonEmpty(intent, plan?.task?.intent, plan?.intent);
+  const effectiveRisk = firstNonEmpty(risk, plan?.task?.risk, plan?.risk);
 
   if (typeof effectiveGoal !== "string" || effectiveGoal.trim() === "") {
     return {
@@ -97,34 +117,45 @@ export async function runHarness({
     goal: effectiveGoal
   };
 
-  // --- Decision (existing Decision Engine; no intent guessing here).
-  const decision = decide({ request, workflowRegistry });
+  // --- Workflow resolution. Plan-driven runs (#34) execute the
+  // approved plan's workflow as-is: the Decision Engine is NOT
+  // re-executed, so an approved plan cannot silently diverge. Plan-less
+  // runs go through the Decision Engine as before.
+  let selectedWorkflowName;
+  let decision = null;
 
-  if (decision.status !== "ready" || decision.selectedWorkflow === null) {
-    const details = decision.clarification
-      ? `${decision.clarification.message} 必要な入力: ${decision.clarification.missing_fields.join("、")}`
-      : decision.diagnostics.map((diagnostic) => diagnostic.message).join(" ");
-    return {
-      exitCode: EXIT_CODES.INVALID_INPUT,
-      decision,
-      workflowName: decision.selectedWorkflow?.name ?? null,
-      executionId: executionId ?? null,
-      result: null,
-      message: `実行するWorkflowを決定できませんでした。${details}`.trim()
-    };
+  if (planDrivenWorkflowName !== null) {
+    selectedWorkflowName = planDrivenWorkflowName;
+  } else {
+    decision = decide({ request, workflowRegistry });
+
+    if (decision.status !== "ready" || decision.selectedWorkflow === null) {
+      const details = decision.clarification
+        ? `${decision.clarification.message} 必要な入力: ${decision.clarification.missing_fields.join("、")}`
+        : decision.diagnostics.map((diagnostic) => diagnostic.message).join(" ");
+      return {
+        exitCode: EXIT_CODES.INVALID_INPUT,
+        decision,
+        workflowName: decision.selectedWorkflow?.name ?? null,
+        executionId: executionId ?? null,
+        result: null,
+        message: `実行するWorkflowを決定できませんでした。${details}`.trim()
+      };
+    }
+    selectedWorkflowName = decision.selectedWorkflow.name;
   }
 
   const selectedWorkflow = workflowRegistry.find(
-    (workflow) => workflow.name === decision.selectedWorkflow.name
+    (workflow) => workflow.name === selectedWorkflowName
   );
   if (selectedWorkflow === undefined) {
     return {
       exitCode: EXIT_CODES.INVALID_INPUT,
       decision,
-      workflowName: decision.selectedWorkflow.name,
+      workflowName: selectedWorkflowName,
       executionId: executionId ?? null,
       result: null,
-      message: `選択されたWorkflow "${decision.selectedWorkflow.name}" がRegistryに存在しません。`
+      message: `選択されたWorkflow "${selectedWorkflowName}" がRegistryに存在しません。`
     };
   }
 
