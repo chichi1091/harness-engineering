@@ -63,6 +63,12 @@ export type CommandRunnerOutcome = {
   stdout: string;
   stderr: string;
   durationMs: number | null;
+  /** Set by the Node runner when the process was killed on timeout. */
+  timedOut?: boolean;
+  /** Mechanical classification (Issue #31 vocabulary) when known. */
+  errorCategory?: string;
+  /** Set by the guarded runner when the guardrails refused the command. */
+  violation?: unknown;
 };
 
 export type CommandRunner = (request: CommandRunnerRequest) => Promise<CommandRunnerOutcome>;

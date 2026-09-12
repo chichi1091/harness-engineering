@@ -62,6 +62,12 @@ export type StepExecutionOutcome = {
    * working; recorded verbatim on the step record.
    */
   runtime?: import("../runtimes/contracts.js").RuntimeExecutionMetadata;
+  /**
+   * Raw text output of the runtime invocation, when the adapter can
+   * capture one. Recorded on the step record for tracking and
+   * debugging; structured results should be returned as artifacts.
+   */
+  outputText?: string;
 };
 
 export type StepExecutor = (request: StepExecutionRequest) => StepExecutionOutcome | Promise<StepExecutionOutcome>;
@@ -232,6 +238,8 @@ export type StepRecord = {
   tokensSpent: number;
   /** Runtime execution metadata reported by the Runtime Adapter (Issue #31). */
   runtime: import("../runtimes/contracts.js").RuntimeExecutionMetadata | null;
+  /** Raw text output captured by the adapter, when any. */
+  outputText: string | null;
 };
 
 export type StepResultSummary = {
