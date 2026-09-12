@@ -149,6 +149,16 @@ Economy → 確信あり → 完了
 - これにより Explorer の「リポジトリを変更してはならない」、Reviewer の「実装変更は行わない」という制約が、Prompt上の指示ではなくランタイムレベルで強制される
 - 操作レベルの実行時強制（shell / git / network / secrets 等）は Action Guardrails（次節）が担う
 
+## Runtime Adapter
+
+Runtime Adapter Interface（Issue #31）。OpenCode / Claude Code / Codex / Gemini CLI 等を同一契約で扱う。既存 StepExecutor Port（Issue #21）の拡張であり、`executeStep` シグネチャは不変のため `runWorkflow` への接続は `toStepExecutor(adapter)` だけで済む。
+
+- **契約**: `name`、`capabilities`（任意）、`executeStep(request)`。結果は既存のStepExecutionOutcomeに `runtime` メタデータ（adapter名 / provider / model / exit code / `errorCategory` / duration / session ID）を付けて報告する
+- **エラー分類語彙**: `RUNTIME_ERROR_CATEGORIES`。Fallback Policy（#23）の対象（`timeout` / `provider_unavailable` / `rate_limited` / `quota_exceeded` / `transient_error`）と対象外（`auth_error` / `invalid_model` 等）を語彙レベルで共有し、Interfaceは分類を報告するのみ（Fallback判断はPolicy側の責務）
+- **記録**: `outcome.runtime` はExecution Resultの `steps[].results[].runtime` へそのまま記録され、#22 Model Execution Tracking の記録項目と突合する
+- **参照実装**: Mock Runtime（`createMockRuntimeAdapter`）が timeout / exit異常 / rate limit / crash / shell実行（Guarded Command Runner経由）を再現できる。実AIを起動しないため、CoreのテストはすべてMockで動く
+- **Guardrails接続点**: プロセス実行は `createGuardedCommandRunner` を経由するのが契約で、RuntimeはGuardrailsを迂回できない
+
 ## Action Guardrails
 
 操作レベルの実行時強制（`src/guardrails/`）。filesystem / shell / git / network / secrets / external の操作を `enforceAction` が機械判定し、違反はExecution LoopのStepFailureになる。

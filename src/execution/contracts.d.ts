@@ -54,6 +54,14 @@ export type StepExecutionOutcome = {
   failure?: StepFailure;
   /** Tokens consumed by this execution; recorded in the token ledger. */
   tokensSpent?: number;
+  /**
+   * Runtime execution metadata reported by the Runtime Adapter
+   * (Issue #31): which runtime/provider/model ran, how it exited, and
+   * the mechanical error category (shared vocabulary with the Fallback
+   * Policy, Issue #23). Optional so every existing executor keeps
+   * working; recorded verbatim on the step record.
+   */
+  runtime?: import("../runtimes/contracts.js").RuntimeExecutionMetadata;
 };
 
 export type StepExecutor = (request: StepExecutionRequest) => StepExecutionOutcome | Promise<StepExecutionOutcome>;
@@ -222,6 +230,8 @@ export type StepRecord = {
   failure: StepFailure | null;
   artifacts: readonly AgentArtifact[];
   tokensSpent: number;
+  /** Runtime execution metadata reported by the Runtime Adapter (Issue #31). */
+  runtime: import("../runtimes/contracts.js").RuntimeExecutionMetadata | null;
 };
 
 export type StepResultSummary = {
