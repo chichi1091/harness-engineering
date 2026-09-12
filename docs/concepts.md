@@ -44,6 +44,31 @@ Reviewerが指摘に付与する重要度。正本は `agents/reviewer.yaml` で
 
 原則としてBlockingにしない指摘: cosmeticな変更、個人の好みによるスタイル指摘、根拠のある保守性改善を示さないspeculative refactoring、本変更と無関係な既存問題。
 
+## Execution Engine
+
+選択済みWorkflowを読込済み定義のまま実行するループ駆動部（`src/execution/execution-engine.js` の `runWorkflow`）。`executeStep`（Step Executor Port）だけをランタイムへの窓口とし、本体は副作用を持たない。
+
+```text
+Developer → Test Engineer → NG → Developer（修正）→ Test Engineer（再検証）→ OK → 次のStep
+```
+
+- **Executionの状態**: `completed`（全Step成功）/ `stopped`（規則に基づく安全な停止）/ `failed`（異常終了）。`running` は将来の再開可能な実行のための中間状態
+- **Stepの状態語彙**: `pending` / `running` / `succeeded` / `failed` / `blocked`。完了した実行結果では、Stepは少なくとも1回成功していれば `succeeded`、実行されたが成功なしなら `failed`、停止により一度も実行されなければ `blocked` として報告される
+- **遷移規則**: 成功時は次のStepへ。失敗時は `recordAttempt` で試行を記録し、`on_failure` と `decideStepRetry` の判断に従って差し戻しまたは安全な停止を行う。`on_failure` のない失敗、到達不能な `on_failure` 先、実行不能な定義は機械判定コード（`step_failed` / `unknown_failure_target` / `invalid_workflow`）で終了する
+- **完了判定**: `status` と `stopReason`、ステップごとの実行記録（`executionTrace`）、成果物、未解決事項が実行結果として返り、最終的な成功/失敗/停止理由を機械的に判定できる
+- **無限ループの構造的防止**: 差し戻しのたびにRetry台帳が積算され、`max_attempts` 到達時は `on_failure` を辿らない（`retry_exhausted`）。さらにエンジンは実行回数の防御バウンドを持ち、定義やランタイムの欠陥があっても必ず停止する
+- **成果物の検証**: Stepが返したArtifactは共通Schema（`validateArtifact`）で検証され、不正な成果物での成功は失敗として扱われる。後続Stepは、それまでに生成された最新のArtifactを入力として受け取る
+- **Runtime境界**: 実際のAgent呼出は `executeStep` の実装だけが行う。参照実装はMock Runtime（`src/runtimes/mock/mock-step-executor.js`）。OpenCodeなど実ランタイムの `executeStep` 実装は後続Issue
+
+## 実行の部品
+
+`src/execution/` の純粋関数群は、実行時規則の判断を担う。正本（Workflow YAML / Profile YAML）は定義に、機械的な判断はこれらの関数に、実行はExecution Engineに、それぞれ一元化されている。
+
+- `retry-policy.js`: 再試行判断（`decideStepRetry`）、試行台帳（`recordAttempt`）、打ち切り成果物（`buildRetryExhaustionArtifact`）
+- `token-budget.js`: 予算判定（`decideStepBudget`）、消費台帳（`recordSpend`）、予算超過成果物（`buildBudgetExhaustionArtifact`）
+- `model-tier.js`: エスカレーション判断（`decideEscalation`）と記録・打ち切り成果物
+- `execution-engine.js`: 上記を組み合わせた実行ループ（`runWorkflow`）と実行可否検証（`validateWorkflowForExecution`）
+
 ## Retry Policy
 
 Test/Reviewなど、失敗時に差し戻しを行うステップ（`on_failure`）に置く再試行上限。正本は各Workflow YAMLの `retry_policy` である。
@@ -53,6 +78,7 @@ Test/Reviewなど、失敗時に差し戻しを行うステップ（`on_failure`
 - `on_failure` を持つステップは `retry_policy` の宣言が必須。これにより差し戻しの後退辺はすべて有界になり、Developer ⇄ Reviewer/Test の無限ループが構造的に防止される
 - 実行時の再試行回数は台帳に記録する（`src/execution/retry-policy.js` の `recordAttempt` / `attemptCount`）。再試行の可否は `decideStepRetry` が、上限到達時に利用者へ返す未解決事項付きの成果物は `buildRetryExhaustionArtifact` が担う
 - 上限に達した場合、または `retry_on` に合致しない失敗の場合は、`on_failure` による差し戻しを行わない。未解決事項を成果物として利用者へ返し、継続の判断は利用者が行う
+- 実行時にはExecution Engine（`runWorkflow`）がこの規則を機械的に強制する。失敗のたびに台帳へ記録し、上限到達時は差し戻しを行わず `retry_exhausted` 成果物とともに安全に停止する（「Execution Engine」節を参照）
 
 ## Token Budget
 
