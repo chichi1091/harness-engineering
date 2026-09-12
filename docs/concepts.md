@@ -189,6 +189,18 @@ Agent間で受け渡す構造化成果物は共通Schema（`src/artifacts/artifa
 
 Workflowの `input` / `output` エントリは、任意記述の文字列または `{ artifact: <型ID>, summary }` のオブジェクト。`validate:workflows` が型IDを登録済みSchemaと突合する。OpenCode Adapterは選択Workflowが使う型の必須フィールド一覧をDelegationコマンドの Artifact contracts セクションとして次のAgentへ引き渡す。`validateArtifact(artifact)` が個々の成果物の検証を担う。
 
+## Artifact Store
+
+ArtifactをHarnessの正式な成果物として永続化し、Context Handoffの正本とする仕組み（Issue #29、`src/artifacts/artifact-store.js`）。
+
+- **レコード**: 共通Schema（#7）のArtifactをそのまま埋め込み、`artifactId` / `type` / `version` / `producer`（artifactのproduced_byから導出） / `consumers` / `validationStatus` / `validationErrors` / `executionId` / `stepId` / `createdAt` を付与する。**Artifact Schemaは#7が正本で、別Schemaは存在しない**
+- **Versioning**: artifactId（実行内）ごとにversionは追加専用。既存versionの上書きは排他書き込みで構造的に不可能で、競合は `version_conflict` として機械判定される。再実行・修正はversionが増えるだけで履歴を失わない
+- **Validation**: 保存時に共通Schema検証が走り、既定では不適合Artifactの保存を拒否（`invalid_entry`）。監査目的で不適合Artifactを残す場合は `validationStatus: "invalid"` を明示し、schemaエラーが `validationErrors` に記録される
+- **Storage境界**: 操作API（save/get/search/versioning）はCoreの純粋関数。Storage実装は `listAll()` / `writeRecord()` / `replaceRecord()` プリミティブのみを提供し、File実装（`createFileArtifactStore`、node:fsのみ）とMemory実装（`createMemoryArtifactStore`）が同契約で動作する。DB等への置換はプリミティブ再実装だけで済む
+- **ID語彙**: `executionId` / `stepId` / `artifactId` は `[A-Za-z0-9._-]` に制限され（パス安全・機械検証済み）、#22/#23の実行履歴キーと突合できる
+- **Execution Engine統合**: `runWorkflow({ artifactStore, executionId })` で各Step実行の検証済み成果物を自動保存。in-loop handoff（最新artifactの引き渡し）は従来どおり機能し、Store失敗は `artifact_store_error` diagnosticsで記録される（Loop判定を汚染しない）
+- **Runtime非依存**: Store自体はchild_processを使わず、OpenCode等のRuntime AdapterはStoreを「利用する側」に過ぎない（#32の責務と分離）
+
 ## 能力
 
 AI を役割へ割り当てる際に用いる要件。MVP の能力語彙は次の通り。

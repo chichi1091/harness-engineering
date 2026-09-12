@@ -23,3 +23,6 @@
 
 # Node.js
 node_modules/
+
+# Harness runtime artifacts (execution artifacts are not design documents)
+.harness/
