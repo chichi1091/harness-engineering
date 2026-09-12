@@ -4,6 +4,9 @@
   "version": "0.1.0",
   "description": "Runtime-independent AI development orchestration framework",
   "type": "module",
+  "bin": {
+    "harness": "bin/harness.js"
+  },
   "scripts": {
     "test": "node --test",
     "verify": "node scripts/verify.js",

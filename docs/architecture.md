@@ -4,6 +4,26 @@
 
 Harness Engineering は、複数 AI による開発を、特定のAI製品・モデル・IDEに縛られずに再現可能にする。
 
+## harness run（CLI入口）
+
+`bin/harness.js` は既存コンポーネントを1本の実行フローへ接続する薄い入口である（Issue #33）。実行ロジックは持たず、構成と接続だけを行う。
+
+```text
+Goal / 承認済みPlan
+  → Plan approval check
+  → Decision Engine（Workflow選択 — 既存）
+  → Execution Engine（実行ループ — 既存）
+      → Step Executor Port → Fallback (#23) → Runtime Adapter（OpenCode #32 / Mock）
+          → Guarded Command Runner (#27) → Runtime
+      → Artifact Store (#29) / Model Execution Tracking (#22)
+      → Mechanical Verification (#28、構成した検証ステップ)
+  → Execution Result（machine-checkable）→ CLI表示 / Exit code
+```
+
+- CLIはDecision/Executionの新規ロジックを含まない。intent解決のAI化(#38等)は将来、Decision Engineの前段に接続する
+- 承認済みPlan(`approved: true`)のみ実行する(#34 harness plan との最小契約)
+- Exit code: 0=成功 / 1=実行失敗・停止 / 2=入力不正・Workflow決定不能 / 3=Plan未承認
+
 ## MVP の構造
 
 ```text
