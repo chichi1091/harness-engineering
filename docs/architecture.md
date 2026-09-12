@@ -57,7 +57,7 @@ Runtime → Provider / Model
 - **Guardrails接続点（#27）**: プロセス実行は必ずCommand Runner Portを経由するため、`createGuardedCommandRunner` がその出口でshell操作を検査する。Runtime Adapterはこのrunnerを迂回できず、拒否は `guardrail_violation` 分類でadapterの失敗outcomeとして返る
 - **責務分離**: Runtime AdapterはAI/Runtimeを**実行**し、Mechanical Verification（#28）は実行結果を**検証**し、Guardrails（#27）は許可されない操作を**拒否**する
 - **新Runtime追加**: `validateRuntimeAdapter` を通る契約実装を1つ追加するだけでよく、Coreの変更は不要（機械検査テストあり）。Mock Runtime（`src/runtimes/mock/mock-runtime-adapter.js`）が参照実装であり、timeout / exit異常 / rate limit / guardrail拒否を再現できる
-- OpenCode Runtime Executor（Issue #32）がこのInterfaceの最初の実装となる
+- OpenCode Runtime Executor（Issue #32）がこのInterfaceの最初の実装となる。`createOpenCodeRuntimeAdapter` は実確認済みの `opencode run` フラグでCLIを起動し、宣言されたinput Artifactのみからpromptを構築し（#9実行時強制）、出力中のSchema適合JSONを成果物として抽出する。実行は必ずGuarded Command Runner経由であり、timeout / exit異常 / Guardrails拒否は機械分類されてExecution LoopのFailure Resultになる
 
 ## Action Guardrails
 
