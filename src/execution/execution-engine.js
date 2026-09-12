@@ -289,7 +289,11 @@ export async function runWorkflow({ workflow, executeStep, maxStepExecutions }) 
       status,
       failure,
       artifacts: outcome.artifacts ?? [],
-      tokensSpent: tokensSpent ?? 0
+      tokensSpent: tokensSpent ?? 0,
+      // Runtime metadata (Issue #31) is recorded verbatim so model
+      // tracking (Issue #22) and fallback decisions (Issue #23) can be
+      // built on the execution result without re-running anything.
+      runtime: isRecord(outcome.runtime) ? outcome.runtime : null
     };
     recordsByStep.get(step.id).push(record);
     trace.push({ stepId: step.id, attempt, status });

@@ -40,6 +40,25 @@ OpenCode Adapter MVPは、Workflow YAMLの読込、Registry構築、DecisionCont
 
 OpenCode Executor MVPは、Adapterが返したOpenCodeコマンドのパスと内容を `.opencode/commands/` へ安全に配置する副作用層である。CLI実行とAIモデル呼出は行わない。詳細は [OpenCode Executor](runtimes/opencode.md) を参照する。
 
+## Runtime Adapter Interface
+
+Runtime Adapter Interface（Issue #31、`src/runtimes/contracts.d.ts` + `runtime-adapter.js`）は、OpenCode / Claude Code / Codex / Gemini CLI 等を同一契約で扱うための共通Interfaceである。既存の StepExecutor Port（Issue #21）の**拡張**として定義されており、`executeStep` のシグネチャは不変のため、Execution Engineの変更なしで接続できる。
+
+```text
+Harness Core
+     ↓  StepExecutor Port（executeStep）＋ RuntimeAdapter契約
+Runtime Adapter（OpenCode / Claude Code / Codex / Gemini CLI / Mock）
+     ↓  Command Runner Port（プロセス実行の唯一の出口）
+Runtime → Provider / Model
+```
+
+- **契約が報告するもの**: 成功/失敗、成果物Artifact、exit code、エラー分類（`RUNTIME_ERROR_CATEGORIES` — Fallback Policy #23 と語彙を共有）、Token usage、provider / model、duration、session ID。これらは `outcome.runtime` として返り、Execution Result の `steps[].results[].runtime` に記録される（#22 Model Execution Tracking の記録項目）
+- **エラー分類**: `FALLBACK_ELIGIBLE_ERROR_CATEGORIES`（timeout / provider_unavailable / rate_limited / quota_exceeded / transient_error）と対象外（auth_error / invalid_model 等）をInterfaceが語彙定義し、Fallback判断（#23）はこの語彙だけを消費する
+- **Guardrails接続点（#27）**: プロセス実行は必ずCommand Runner Portを経由するため、`createGuardedCommandRunner` がその出口でshell操作を検査する。Runtime Adapterはこのrunnerを迂回できず、拒否は `guardrail_violation` 分類でadapterの失敗outcomeとして返る
+- **責務分離**: Runtime AdapterはAI/Runtimeを**実行**し、Mechanical Verification（#28）は実行結果を**検証**し、Guardrails（#27）は許可されない操作を**拒否**する
+- **新Runtime追加**: `validateRuntimeAdapter` を通る契約実装を1つ追加するだけでよく、Coreの変更は不要（機械検査テストあり）。Mock Runtime（`src/runtimes/mock/mock-runtime-adapter.js`）が参照実装であり、timeout / exit異常 / rate limit / guardrail拒否を再現できる
+- OpenCode Runtime Executor（Issue #32）がこのInterfaceの最初の実装となる
+
 ## Action Guardrails
 
 Action Guardrailsは、Issue #6のPermissionモデル（役割の read / edit / write 宣言 × Profileのmode合成）を**操作レベルの実行時強制**へ拡張する（`src/guardrails/`）。filesystem / shell / git / network / secrets / external の6種の操作を共通のPolicyモデルで判定し、CoreはRuntime非依存を維持する。

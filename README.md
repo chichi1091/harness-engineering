@@ -138,7 +138,8 @@ git diff --check
 ├── src/adapters/opencode/ # OpenCode向けRegistry・Profile読込とPlan変換（CLI非実行）
 ├── src/runtimes/opencode/ # OpenCodeコマンド配置（CLI非実行）
 ├── src/runtimes/node/     # Command RunnerのNode実装（プロセス実行）
-├── src/runtimes/mock/     # StepExecutor / Command Runnerの参照実装（テスト・例で使用）
+├── src/runtimes/mock/     # Runtime Adapter / StepExecutor / Command Runnerの参照実装
+├── src/runtimes/runtime-adapter.js # Runtime Adapter Interfaceの契約ヘルパー（Issue #31）
 ├── test/             # 各層の単体テストとExecution Loopの統合テスト
 └── docs/            # 設計と用語
 ```
