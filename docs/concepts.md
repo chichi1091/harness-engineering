@@ -110,6 +110,24 @@ AI実行ごとの観測記録(Issue #22、`src/execution/model-execution-trackin
 - **Artifact Store統合(#29)**: `runWorkflow({ artifactStore, executionId, trackModelExecutions: true })` で各recordが `model-execution-record` 型のartifactとして永続化される(`produced_by: "harness"`)
 - **Secret protection(#27)**: `failureReason` は保存前にsecret検出(#27)に掛かり、認証情報形状が検出された場合は値を含めず `[redacted: ...]` に置換される
 
+## Fallback Policy
+
+Provider / Modelが一時的に利用不能になった場合の復旧(Issue #23、`src/execution/fallback-policy.js` + `src/runtimes/fallback-runtime-adapter.js`)。
+
+```text
+Provider A / Model X
+  ↓ rate_limited / quota_exceeded / provider_unavailable / timeout / transient_error
+Failure Classification(#31語彙)
+  ↓ fallback-eligible
+Fallback Runtime Adapter → 次候補で再実行
+```
+
+- **Retry / Fallback / Escalationの分離**: Retry(#21 Engine)は**同じ**modelでの再試行。Fallback(本節)は**別**Provider/Modelへの切り替え。Escalation(#10形状)はTier切り替えの報告(判断は将来実装)。コード品質の失敗(検証NG等)はFallbackではなくExecution Loop側の修正対象
+- **Fallback対象**: `FALLBACK_ELIGIBLE_ERROR_CATEGORIES`(#31語彙を単一源として共有)— `timeout` / `provider_unavailable` / `rate_limited` / `quota_exceeded` / `transient_error` のみ。**対象外**(auth_error / invalid_model / invalid_configuration / permission_denied / nonzero_exit / runtime_error / invalid_response / guardrail_violation / 未分類)は候補が残っていても即返る。**Guardrails違反をFallbackで回避する経路は存在しない**
+- **Loop防止**: 候補はPolicy宣言から作られる有限・重複なし・順序付きの列で、実行は前方消費のみ。重複候補は宣言検証(`validateFallbackPolicy`)が拒否し、`maxFallbacks`で切り詰めるため循環(A→B→A)は構造的に不可能
+- **追跡(#22)**: Fallback Runtime Adapterは全候補試行を `outcome.runtime.fallbackChain` / `fallbackCount` / `fallback` として報告し、Model Execution Recordへそのまま転記される(original→to provider/model、reason、count、attempts、最終結果)
+- **Guardrails維持**: delegate生成は呼び出し側が同一のGuarded Command Runner構成を注入する(#32と同構成)。Providerが変わってもGuardrailsの強度は変わらず、拒否は `guardrail_violation`(非対象)として返る
+
 ## Context Handoff
 
 Agent間のContext受け渡しの基本方針。重複したToken消費（同じコードや会話履歴を各Agentが読み直す）を抑えるため、**会話履歴やコード全文ではなく構造化Artifactを基本の受け渡し単位**とする。

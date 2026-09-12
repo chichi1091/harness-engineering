@@ -91,14 +91,37 @@ export type RuntimeExecutionMetadata = {
     toTier?: string;
     reason?: string;
   } | null;
-  /** Provider/model fallback report (reserved for Issue #23). */
+  /**
+   * Provider/model fallback report (Issue #23): present when at least
+   * one fallback attempt was made, recording the full trail.
+   */
   fallback?: {
     fromProvider?: string;
     fromModel?: string;
     toProvider?: string;
     toModel?: string;
+    /** Error category that triggered the fallback. */
     reason?: string;
+    /** Number of fallback switches performed (successful primary = 0). */
+    count?: number;
+    /** Every candidate attempt in order, including the primary. */
+    attempts?: readonly {
+      provider: string;
+      model: string;
+      status: string;
+      errorCategory: string | null;
+    }[];
   } | null;
+  /** Number of fallback switches performed for this execution (Issue #23). */
+  fallbackCount?: number;
+  fallbackReason?: string;
+  /** Chronological candidate trail: primary first, then fallbacks. */
+  fallbackChain?: readonly {
+    provider: string;
+    model: string;
+    status: string;
+    errorCategory: string | null;
+  }[];
 };
 
 /**
