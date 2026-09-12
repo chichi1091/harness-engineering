@@ -105,11 +105,13 @@ test("Runtime固有実装がCoreへ漏れていないこと(依存方向の機�
     }
   }
 
+  // Matches actual import/require statements, not prose mentioning the module
+  const childProcessImport = /(?:from\s+["']|require\(\s*["'])[^\n"']*child_process/;
   const noProcessRule = [
-    [/child_process/, "Core must not import child_process (process spawning belongs to runtime adapters)"]
+    [childProcessImport, "Core must not import child_process (process spawning belongs to runtime adapters)"]
   ];
   const noAdapterImportRule = [
-    [/child_process/, "must not import child_process"],
+    [childProcessImport, "must not import child_process"],
     [/adapters\/opencode/, "must not import OpenCode adapter specifics"]
   ];
 

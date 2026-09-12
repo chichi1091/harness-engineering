@@ -38,6 +38,7 @@
  */
 
 import { validateArtifact } from "../artifacts/artifact-schemas.js";
+import { saveArtifact } from "../artifacts/artifact-store.js";
 import {
   buildRetryExhaustionArtifact,
   createRetryLedger,
@@ -155,16 +156,29 @@ export function validateWorkflowForExecution(workflow) {
  * whose status, stop reason, failure details, artifacts, and per-step
  * records are machine-checkable.
  *
+ * When `artifactStore` is provided together with `executionId`, every
+ * step execution's validated artifacts are additionally persisted under
+ * that execution id (Issue #29) — Context Handoff gains a durable,
+ * auditable home while the in-loop handoff (latest artifacts per type)
+ * keeps working unchanged. Store failures are recorded as
+ * `artifact_store_error` diagnostics and never abort the loop: a
+ * persistence hiccup must not masquerade as a workflow failure.
+ *
  * @param {{
  *   workflow: Record<string, unknown> & { name?: string, steps?: unknown },
  *   executeStep: StepExecutor,
- *   maxStepExecutions?: number
+ *   maxStepExecutions?: number,
+ *   artifactStore?: import("../artifacts/contracts.js").ArtifactStore,
+ *   executionId?: string
  * }} options
  * @returns {Promise<ExecutionResult>}
  */
-export async function runWorkflow({ workflow, executeStep, maxStepExecutions }) {
+export async function runWorkflow({ workflow, executeStep, maxStepExecutions, artifactStore, executionId }) {
   if (typeof executeStep !== "function") {
     throw new Error("executeStep must be a function: the engine never invokes an agent runtime itself.");
+  }
+  if (artifactStore !== undefined && (typeof executionId !== "string" || executionId.trim() === "")) {
+    throw new Error("executionId is required when artifactStore is provided.");
   }
 
   const workflowName = isRecord(workflow) && typeof workflow.name === "string" ? workflow.name : "<unknown workflow>";
@@ -302,6 +316,27 @@ export async function runWorkflow({ workflow, executeStep, maxStepExecutions }) 
     for (const artifact of record.artifacts) {
       artifactsProduced.push(artifact);
       latestArtifacts.set(artifact.type, artifact);
+    }
+
+    // Persist validated artifacts (Issue #29). The in-loop handoff above
+    // stays authoritative for the running workflow; the store makes the
+    // artifacts durable and trackable after the run ends.
+    if (artifactStore !== undefined) {
+      for (const artifact of record.artifacts) {
+        try {
+          await saveArtifact(artifactStore, {
+            artifactId: artifact.type,
+            executionId: executionId,
+            stepId: step.id,
+            artifact
+          });
+        } catch (error) {
+          diagnostics.push({
+            code: "artifact_store_error",
+            message: `step "${step.id}": ${error instanceof Error ? error.message : String(error)}`
+          });
+        }
+      }
     }
 
     if (status === "succeeded") {

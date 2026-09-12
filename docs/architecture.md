@@ -40,6 +40,23 @@ OpenCode Adapter MVPは、Workflow YAMLの読込、Registry構築、DecisionCont
 
 OpenCode Executor MVPは、Adapterが返したOpenCodeコマンドのパスと内容を `.opencode/commands/` へ安全に配置する副作用層である。CLI実行とAIモデル呼出は行わない。詳細は [OpenCode Executor](runtimes/opencode.md) を参照する。
 
+## Artifact Store
+
+Artifact Store（Issue #29、`src/artifacts/artifact-store.js`）は、Stepの成果物を実行後も参照できる正式な成果物として永続化する。Recordは共通Schema（#7）のArtifactに `artifactId` / `version` / `producer` / `consumers` / `validationStatus` / `executionId` / `stepId` / `createdAt` を付与したものであり、executionId / stepId は Execution Result と #22/#23 の実行履歴キーと整合する。
+
+```text
+Execution Engine → saveArtifact → Artifact Store Interface
+                                        ↓
+                     Storage primitives（listAll / writeRecord / replaceRecord）
+                                        ↓
+                     File Store（<root>/<executionId>/<stepId>/<artifactId>.v<version>.json）
+                     / Memory Store / 将来のDB等
+```
+
+- **保存詳細はCoreから抽象化**: 操作APIは純粋関数で、Storage実装はプリミティブ（listAll / writeRecord / replaceRecord）だけを持つ。File実装は1レコード1JSON、排他新規作成（`wx`）により既存versionを上書き不能 — 競合は `version_conflict` として機械判定される
+- **Validation**: 保存時に#7のSchema検証が走り、不適合は既定で拒否。`validationStatus: "invalid"` の明示時のみエラー付きで記録（監査）
+- **Context Handoff**: Loop内の引き渡し（最新artifact）は従来どおりで、Storeが実行後の参照・監査・再実行の正本になる。Runtime AdapterはStoreを利用する側であり、StoreはRuntime非依存
+
 ## Runtime Adapter Interface
 
 Runtime Adapter Interface（Issue #31、`src/runtimes/contracts.d.ts` + `runtime-adapter.js`）は、OpenCode / Claude Code / Codex / Gemini CLI 等を同一契約で扱うための共通Interfaceである。既存の StepExecutor Port（Issue #21）の**拡張**として定義されており、`executeStep` のシグネチャは不変のため、Execution Engineの変更なしで接続できる。

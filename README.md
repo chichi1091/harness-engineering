@@ -135,6 +135,7 @@ git diff --check
 ├── src/execution/   # 実行ループ（Execution Engine）とRetry/Budget/Tierの純粋関数
 ├── src/guardrails/  # 操作レベルの実行時強制（filesystem/shell/git/network/secrets）
 ├── src/verification/ # 品質ゲートの統一実行と機械判定（Verification Engine）
+├── src/artifacts/   # Artifact共通SchemaとArtifact Store（永続化）
 ├── src/adapters/opencode/ # OpenCode向けRegistry・Profile読込とPlan変換（CLI非実行）
 ├── src/runtimes/opencode/ # OpenCodeコマンド配置とCLI実行Adapter（Runtime Adapter Interface実装）
 ├── src/runtimes/node/     # Command RunnerのNode実装（プロセス実行）
