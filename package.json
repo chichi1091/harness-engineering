@@ -6,9 +6,11 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
+    "verify": "node scripts/verify.js",
     "validate:yaml": "node scripts/validate-yaml.js",
     "validate:workflows": "node scripts/validate-workflows.js",
-    "validate:profiles": "node scripts/validate-profiles.js"
+    "validate:profiles": "node scripts/validate-profiles.js",
+    "validate:gates": "node scripts/validate-quality-gates.js"
   },
   "dependencies": {
     "yaml": "^2.9.0"

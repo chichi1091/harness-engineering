@@ -1,0 +1,28 @@
+name: harness-quality-gates
+purpose: 品質ゲートを統一的に実行し、結果を機械判定できる形で返す
+commands:
+  - id: validate-yaml
+    title: YAML syntax validation
+    command: npm
+    args:
+      - run
+      - validate:yaml
+  - id: validate-workflows
+    title: Workflow registry semantic validation
+    command: npm
+    args:
+      - run
+      - validate:workflows
+  - id: validate-profiles
+    title: Profile registry semantic validation
+    command: npm
+    args:
+      - run
+      - validate:profiles
+  - id: unit-tests
+    title: Unit tests
+    command: npm
+    args:
+      - test
+policy:
+  on_failure: continue
