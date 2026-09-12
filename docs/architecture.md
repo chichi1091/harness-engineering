@@ -40,6 +40,27 @@ OpenCode Adapter MVPは、Workflow YAMLの読込、Registry構築、DecisionCont
 
 OpenCode Executor MVPは、Adapterが返したOpenCodeコマンドのパスと内容を `.opencode/commands/` へ安全に配置する副作用層である。CLI実行とAIモデル呼出は行わない。詳細は [OpenCode Executor](runtimes/opencode.md) を参照する。
 
+## Action Guardrails
+
+Action Guardrailsは、Issue #6のPermissionモデル（役割の read / edit / write 宣言 × Profileのmode合成）を**操作レベルの実行時強制**へ拡張する（`src/guardrails/`）。filesystem / shell / git / network / secrets / external の6種の操作を共通のPolicyモデルで判定し、CoreはRuntime非依存を維持する。
+
+```text
+Agent permissions（正本） + Profile mode + action_policy（正本）
+        ↓ 純粋判定
+enforceAction（Guardrails Core）
+   ├─ allow  → ランタイムが操作を実行
+   └─ deny / requires_approval → ActionViolation + StepFailure → Execution Loop
+```
+
+- **deny-by-default**: shell実行・network egress・外部サービス呼び出し・git push・destructive操作（force-push / reset / clean / `rm -rf` 等）・filesystem削除・secrets操作は、宣言がなければ機械的に拒否される
+- **昇格は承認トークンのみ**: destructive操作は人間の承認トークン（例: `git.force-push`）が Approvals に含まれる場合だけ実行できる。secretsだけは承認でも緩められない
+- **secret漏洩の機械検出**: 送信系操作のpayloadが既知の認証情報形状に一致した場合は拒否され、検出値は失敗メッセージへ出力されない
+- **untrusted content境界**: 外部コンテンツは `<<<UNTRUSTED ... >>>` マーカーで包んで埋め込み、閉じられていない境界やマーカーを含む外部テキストは構造的に拒否される（信頼済み指示との混在防止）
+- **Execution Loopへの返却**: 拒否は `buildActionViolationFailure` により StepFailure に変換され、Step実行ランタイムが `executeStep` の失敗outcomeとして返す。`on_failure` / `retry_policy` 回路は既存のまま機能し、Execution Engineの変更は不要
+- **合成は縮小方向のみ**: Policyの合成（Profile → Workflow → Step）は許可を広げられない（Permissionモデルと同じ原則）
+
+OpenCode等の個別ランタイムへの適用（生成設定への変換・操作の横取り）はRuntime Adapter側の責務であり、Runtime Adapter Interface（Issue #31）が前提となる。
+
 ## Mechanical Verification
 
 品質ゲート(formatter / linter / type check / build / test などの機械的検証)の正本は `quality-gates.yaml` であり、実行の本体はVerification Engine（`src/verification/verification-engine.js`）である。Engineは `runCommand` Portだけをランタイムへの窓口とし、プロセス起動は行わない。
