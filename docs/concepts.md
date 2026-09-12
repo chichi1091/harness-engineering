@@ -100,6 +100,16 @@ Workflowが消費できるトークン量の上限。正本は各Workflow YAML�
 - 判定は実行前チェック（`decideStepBudget`）。モデル呼び出しは中断できないため、実際の消費を記録し、次の実行前に上限に達していれば追加の呼び出しを行わない。総額の判定がステップ上限より先に行われる
 - 予算超過時はWorkflowを停止し（再試行は不可 — 予算超過での追加消費は予算に矛盾する）、`buildBudgetExhaustionArtifact` が完了済み・未完了・未解決事項を含む成果物を利用者へ返す。OpenCode AdapterはDelegationコマンドの Token budget セクションで上限と停止ルールを次のAgentへ伝える
 
+## Model Execution Tracking
+
+AI実行ごとの観測記録(Issue #22、`src/execution/model-execution-tracking.js`)。「どのStepを、どのProvider / Modelで、何回目のAttemptとして実行し、結果がどうだったか」をExecution Resultの `modelExecutions` に記録する。
+
+- **記録内容**: `executionId` / `stepId` / `attempt` / `agent` / `runtime` / `requestedModel` / `resolvedProvider` / `resolvedModel` / `requestedTier` / `resolvedTier` / `startedAt` / `endedAt` / `durationMs` / `status` / `errorCategory` / `failureReason` / `tokensSpent` / `escalation` / `fallback`
+- **推測しない**: Runtime Adapter(#31)が報告しない値はnullのまま。requested/resolved model・tier・escalation・fallbackはRuntime Execution Metadataの報告形状として予約されており、Fallback Policy(#23)やTier選択の実装を待つ
+- **Retry区別**: 同一Stepの再実行はattempt番号が増える別レコードであり、max_attempts打ち切りの試行もすべて記録される
+- **Artifact Store統合(#29)**: `runWorkflow({ artifactStore, executionId, trackModelExecutions: true })` で各recordが `model-execution-record` 型のartifactとして永続化される(`produced_by: "harness"`)
+- **Secret protection(#27)**: `failureReason` は保存前にsecret検出(#27)に掛かり、認証情報形状が検出された場合は値を含めず `[redacted: ...]` に置換される
+
 ## Context Handoff
 
 Agent間のContext受け渡しの基本方針。重複したToken消費（同じコードや会話履歴を各Agentが読み直す）を抑えるため、**会話履歴やコード全文ではなく構造化Artifactを基本の受け渡し単位**とする。

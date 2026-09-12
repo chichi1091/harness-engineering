@@ -21,7 +21,8 @@ export const ARTIFACT_TYPES = [
   "implementation-result",
   "test-result",
   "review-result",
-  "verification-result"
+  "verification-result",
+  "model-execution-record"
 ];
 
 const ENVELOPE_SUMMARY = "type / produced_by / unresolved";
@@ -118,6 +119,24 @@ const SCHEMAS = {
             errors.push(`gates[${index}].status must be a non-empty string.`);
           }
         });
+      }
+      return errors;
+    }
+  },
+  "model-execution-record": {
+    summary: "executionId, stepId, attempt(integer >= 1), runtime, status(succeeded or failed)",
+    validate(artifact) {
+      const errors = [];
+      for (const field of ["executionId", "stepId", "runtime"]) {
+        if (!isNonEmptyString(artifact[field])) {
+          errors.push(`model-execution-record: "${field}" must be a non-empty string.`);
+        }
+      }
+      if (!isRecord(artifact) || typeof artifact.attempt !== "number" || !Number.isInteger(artifact.attempt) || artifact.attempt < 1) {
+        errors.push('model-execution-record: "attempt" must be an integer greater than or equal to 1.');
+      }
+      if (artifact.status !== undefined && artifact.status !== "succeeded" && artifact.status !== "failed") {
+        errors.push('model-execution-record: "status" must be "succeeded" or "failed".');
       }
       return errors;
     }

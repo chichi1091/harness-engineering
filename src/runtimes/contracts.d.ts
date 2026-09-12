@@ -74,6 +74,31 @@ export type RuntimeExecutionMetadata = {
   durationMs?: number | null;
   /** Runtime-specific session/correlation identifier, if any. */
   sessionId?: string;
+  /**
+   * Model/Provider the caller asked the runtime to use, when it differs
+   * conceptually from what actually ran (Issue #22: requested vs
+   * resolved). Equal to provider/model when no resolution happened.
+   */
+  requestedProvider?: string | null;
+  requestedModel?: string | null;
+  /** Model tiers, when tier-based resolution is in play (#22). */
+  requestedTier?: string | null;
+  resolvedTier?: string | null;
+  /** Tier escalation report (reserved; populated once #10 escalation runs through adapters). */
+  escalation?: {
+    escalated: boolean;
+    fromTier?: string;
+    toTier?: string;
+    reason?: string;
+  } | null;
+  /** Provider/model fallback report (reserved for Issue #23). */
+  fallback?: {
+    fromProvider?: string;
+    fromModel?: string;
+    toProvider?: string;
+    toModel?: string;
+    reason?: string;
+  } | null;
 };
 
 /**

@@ -75,6 +75,7 @@ Runtime → Provider / Model
 - **責務分離**: Runtime AdapterはAI/Runtimeを**実行**し、Mechanical Verification（#28）は実行結果を**検証**し、Guardrails（#27）は許可されない操作を**拒否**する
 - **新Runtime追加**: `validateRuntimeAdapter` を通る契約実装を1つ追加するだけでよく、Coreの変更は不要（機械検査テストあり）。Mock Runtime（`src/runtimes/mock/mock-runtime-adapter.js`）が参照実装であり、timeout / exit異常 / rate limit / guardrail拒否を再現できる
 - OpenCode Runtime Executor（Issue #32）がこのInterfaceの最初の実装となる。`createOpenCodeRuntimeAdapter` は実確認済みの `opencode run` フラグでCLIを起動し、宣言されたinput Artifactのみからpromptを構築し（#9実行時強制）、出力中のSchema適合JSONを成果物として抽出する。実行は必ずGuarded Command Runner経由であり、timeout / exit異常 / Guardrails拒否は機械分類されてExecution LoopのFailure Resultになる
+- **Model Execution Tracking（Issue #22）**: 各実行は `createModelExecutionRecord` によりExecution Resultの `modelExecutions` に記録される（attempt / requested-resolved model / tier / error category / duration / token usage / escalation / fallback）。値はRuntime Adapterの報告のみから構成され、報告されない値はnull。Artifact Storeが指定され `trackModelExecutions` が有効な場合、recordは `model-execution-record` artifactとして永続化される
 
 ## Action Guardrails
 
