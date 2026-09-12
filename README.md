@@ -6,9 +6,9 @@ Harness Engineering は、複数の AI を役割ごとに協調させ、ソフ�
 
 ## MVP の範囲
 
-この初期版は、どの AI コーディング環境でも読める共通の役割・コマンド・ワークフローと、6種類のWorkflowを選択するPure FunctionのDecision Engineを提供します。実行は `AGENTS.md` の最小実行プロトコルに従って進めます。
+この初期版は、どの AI コーディング環境でも読める共通の役割・コマンド・ワークフロー、6種類のWorkflowを選択するPure FunctionのDecision Engine、そして選択されたWorkflowを `on_failure` / `retry_policy` / Token Budget の規則に従って自動実行するExecution Engineを提供します。実行の本体は `AGENTS.md` の最小実行プロトコルに従って進めます。
 
-ランタイムごとの Adapter、CLI実行、自動オーケストレーション、設定スキーマ、バリデーション、テンプレート、サンプルは後続フェーズの対象です。
+ランタイムごとの Adapter、CLI実行、実ランタイムを呼び出す `executeStep` の実装、設定スキーマ、テンプレート、サンプルは後続フェーズの対象です。Execution Engineのテストと例はMock Runtime（`src/runtimes/mock/`）で動作します。
 
 ## 設計原則
 
@@ -130,12 +130,14 @@ git diff --check
 ├── AGENTS.md        # 全ランタイム共通の運用指示
 ├── agents/          # 能力・責務・完了条件で定義した役割
 ├── commands/        # 利用者の依頼をワークフローへ結び付ける入口
-├── workflows/       # 役割の順序、入出力、ゲート
+├── workflows/       # 役割の順序、入出力、ゲート、on_failureとretry_policy
 ├── profiles/        # 実行環境ごとの役割→モデル割当（Execution Profile）
 ├── src/decision-engine/ # Pure FunctionとしてのWorkflow選択
+├── src/execution/   # 実行ループ（Execution Engine）とRetry/Budget/Tierの純粋関数
 ├── src/adapters/opencode/ # OpenCode向けRegistry・Profile読込とPlan変換（CLI非実行）
 ├── src/runtimes/opencode/ # OpenCodeコマンド配置（CLI非実行）
-├── test/             # Decision Engineの単体テスト
+├── src/runtimes/mock/     # StepExecutor Portの参照実装（テスト・例で使用）
+├── test/             # 各層の単体テストとExecution Loopの統合テスト
 └── docs/            # 設計と用語
 ```
 

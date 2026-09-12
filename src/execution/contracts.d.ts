@@ -4,8 +4,59 @@ export type RetryPolicy = {
 };
 
 export type StepFailure = {
+  /** Human-readable reason the step failed. */
+  reason?: string;
+  /** Severity classification used by retry_policy.retry_on matching. */
   severities?: readonly string[];
+  /** Unresolved items returned to the user when the workflow stops. */
+  unresolved?: readonly string[];
 };
+
+export type AgentArtifact = {
+  type: string;
+  produced_by: string;
+  unresolved: readonly string[];
+  [field: string]: unknown;
+};
+
+export type WorkflowStep = {
+  id: string;
+  agent: string;
+  token_budget?: number;
+  input?: readonly unknown[];
+  output?: readonly unknown[];
+  gate: string;
+  on_failure?: string;
+  retry_policy?: RetryPolicy;
+};
+
+/**
+ * The only interface the Execution Engine needs from a runtime: run one
+ * step (typically one agent invocation) and report what happened. Core
+ * never invokes a CLI or a model itself; runtime adapters implement this
+ * port (the mock runtime is the reference implementation).
+ */
+export type StepExecutionRequest = {
+  workflowName: string;
+  stepId: string;
+  step: WorkflowStep;
+  /** 1-based execution count of this step within the run. */
+  attempt: number;
+  /** Latest artifact per type produced by earlier steps of this run. */
+  artifacts: Readonly<Record<string, AgentArtifact>>;
+};
+
+export type StepExecutionOutcome = {
+  status: "succeeded" | "failed";
+  /** Artifacts produced by this execution; validated against the common schemas. */
+  artifacts?: readonly AgentArtifact[];
+  /** Required when status is "failed". */
+  failure?: StepFailure;
+  /** Tokens consumed by this execution; recorded in the token ledger. */
+  tokensSpent?: number;
+};
+
+export type StepExecutor = (request: StepExecutionRequest) => StepExecutionOutcome | Promise<StepExecutionOutcome>;
 
 export type RetryLedger = {
   readonly attempts: Readonly<Record<string, number>>;
@@ -129,3 +180,89 @@ export declare function buildRetryExhaustionArtifact(options: {
   gate: string;
   unresolved: readonly string[];
 }): RetryExhaustionArtifact;
+
+/** Vocabulary of step statuses within an execution run. */
+export type StepStatus = "pending" | "running" | "succeeded" | "failed" | "blocked";
+
+/**
+ * Terminal execution statuses. "running" is an intermediate state used by
+ * future resumable runtimes and never appears in a finished runWorkflow
+ * result.
+ */
+export type ExecutionStatus = "completed" | "stopped" | "failed";
+
+/**
+ * Machine-checkable reason an execution did not complete:
+ * - retry_exhausted: a gated step used up retry_policy.max_attempts; the
+ *   workflow stopped instead of following on_failure (policy stop)
+ * - budget_exhausted: the workflow or step token budget was spent (policy stop)
+ * - step_failed: a step failed and declared no on_failure recovery
+ * - invalid_workflow: the workflow definition is not runnable
+ * - unknown_failure_target: on_failure referenced an unreachable step
+ * - max_step_executions_exceeded: the defensive execution bound was hit
+ */
+export type ExecutionStopReason =
+  | "retry_exhausted"
+  | "budget_exhausted"
+  | "step_failed"
+  | "invalid_workflow"
+  | "unknown_failure_target"
+  | "max_step_executions_exceeded";
+
+export type ExecutionDiagnostic = {
+  code: string;
+  message: string;
+};
+
+/** Record of one execution of one step (a step may execute multiple times). */
+export type StepRecord = {
+  stepId: string;
+  attempt: number;
+  status: "succeeded" | "failed";
+  failure: StepFailure | null;
+  artifacts: readonly AgentArtifact[];
+  tokensSpent: number;
+};
+
+export type StepResultSummary = {
+  status: StepStatus;
+  executions: number;
+  succeeded: number;
+  failed: number;
+  results: readonly StepRecord[];
+};
+
+export type ExecutionTraceEntry = {
+  stepId: string;
+  attempt: number;
+  status: "succeeded" | "failed";
+};
+
+export type ExecutionResult = {
+  workflow: string;
+  status: ExecutionStatus;
+  /** null when the workflow completed. */
+  stopReason: ExecutionStopReason | null;
+  /** Step whose terminal failure ended the run, when applicable. */
+  failedStep: string | null;
+  /** Terminal failure details, when applicable. */
+  failure: StepFailure | null;
+  diagnostics: readonly ExecutionDiagnostic[];
+  /** Per-step summary in workflow declaration order. */
+  steps: Readonly<Record<string, StepResultSummary>>;
+  /** Steps that reached at least one successful execution. */
+  completedSteps: readonly string[];
+  /** Steps never executed because the run stopped or failed earlier. */
+  blockedSteps: readonly string[];
+  /** Chronological record of every step execution. */
+  executionTrace: readonly ExecutionTraceEntry[];
+  /** Latest artifact per type, available to later steps and to the caller. */
+  artifacts: Readonly<Record<string, AgentArtifact>>;
+  /** Every artifact produced during the run, in production order. */
+  artifactsProduced: readonly AgentArtifact[];
+  /** retry_exhausted / budget_exhausted artifact, when the run stopped on policy. */
+  stopArtifact: RetryExhaustionArtifact | BudgetExhaustionArtifact | null;
+  /** Unresolved items the user must judge (empty on completion). */
+  unresolved: readonly string[];
+  tokensSpent: number;
+};

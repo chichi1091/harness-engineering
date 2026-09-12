@@ -20,6 +20,14 @@ Decision Engine導入後は、Commandの明示指定またはユーザー要求�
 DecisionContext → Decision Engine（Pure Function）→ Delegation Plan → Adapter（後続フェーズ）
 ```
 
+選択されたWorkflowの実行はExecution Engineが担う。読込済みWorkflow定義と、Agent 1回分の実行を行う `executeStep` 関数（Step Executor Port）を入力に、Stepを順に駆動し、`on_failure` / `retry_policy` / Token Budgetを実行時に強制して最終結果を返す。
+
+```text
+Workflow定義 + StepExecutor Port → Execution Engine（実行ループ）→ Execution Result
+                                      ↓
+                        Runtime Adapter（OpenCode / Mock / ...）
+```
+
 - **Command** は依頼の種類を選び、開始条件と対象ワークフローを示す。
 - **Workflow** は役割の実行順、各工程の入力・出力、完了ゲートを定める。
 - **Agent definition** は役割の必要能力、責務、禁止事項、成果物、完了条件を定める。
@@ -31,6 +39,22 @@ Decision Engine MVPは、読込済みWorkflow Registryを入力に、Workflow選
 OpenCode Adapter MVPは、Workflow YAMLの読込、Registry構築、DecisionContext生成、Engine呼出、OpenCode Markdownコマンド内容への変換を担う。ファイルへの配置、CLI実行、AIモデル呼出は後続のRuntime層の責務である。詳細は [OpenCode Adapter](adapters/opencode.md) を参照する。
 
 OpenCode Executor MVPは、Adapterが返したOpenCodeコマンドのパスと内容を `.opencode/commands/` へ安全に配置する副作用層である。CLI実行とAIモデル呼出は行わない。詳細は [OpenCode Executor](runtimes/opencode.md) を参照する。
+
+## Execution EngineとRuntime境界
+
+Execution Engine（`src/execution/execution-engine.js`）は、特定のAIランタイムに依存しない。Engineがランタイムに要求するのは、1ステップ（=1 Agent呼出）を実行して結果を報告する `executeStep` 関数だけである。
+
+```text
+Core（Decision Engine / Execution Engine / 純粋関数群）
+  ↓ StepExecutor Port（executeStep）
+Runtime Adapter（実装は各ランタイム）
+  ↓
+OpenCode / Claude Code / Codex / Gemini CLI / Mock
+```
+
+- **Core** は `executeStep` の呼び出し結果（成功/失敗、成果物、失敗理由、トークン消費）を受け取り、状態遷移・再試行判断・予算判定・成果物検証を純粋な規則で行う。CLI実行やモデル呼出は行わない
+- **Runtime Adapter** は `executeStep` を実装する。現時点の参照実装はMock Runtime（`src/runtimes/mock/`）で、テストと例でExecution Loopをend-to-endに実行できる。OpenCodeなどの実ランタイム呼出は後続Issueの対象
+- Execution Resultは `status`（completed / stopped / failed）、`stopReason`（機械判定コード）、ステップごとの実行記録、成果物、未解決事項を含み、成功・失敗・停止の理由を機械的に判定できる
 
 ## 分離の境界
 
