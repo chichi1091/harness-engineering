@@ -28,6 +28,32 @@ Harness Engineering は、複数の AI を役割ごとに協調させ、ソフ�
 
 標準の機能開発フローは、Architect → Explorer → Developer → Test Engineer → Reviewer → Documentation です。
 
+## harness run(One Command実行)
+
+目的の自然文を渡すと、Decision EngineによるWorkflow選択からExecution Engineの実行、Mechanical Verification(#28)、Retry/Fallback(#23)、Model Execution Tracking(#22)、Artifact Store(#29)への永続化までを1コマンドで実行します。
+
+```sh
+node bin/harness.js run "ログインAPIにJWT認証を追加してください" --intent feature
+```
+
+主なオプション:
+
+| オプション | 内容 |
+| --- | --- |
+| `--intent <intent>` | Workflow選択のintent(`feature` / `bug-fix` 等)。Decision EngineがWorkflowを選択する |
+| `--risk low\|medium\|high` | リスク水準(`low`なら軽量Workflowへルーティング) |
+| `--runtime mock\|opencode` | 実行Runtime(既定は `mock` — 実AIを使わず実行経路を検証) |
+| `--profile <name>` | 役割ごとのModel割当を `profiles/` から解決 |
+| `--fallbacks p/m,p/m` | Fallback候補(#23。eligible失敗時のみ切り替え) |
+| `--gates <file>` / `--verify-step <id>` / `--no-verify` | Mechanical Verification(#28)の構成 |
+| `--artifacts-dir <dir>` | 実行成果物の永続化先(#29) |
+| `--plan <file>` | 承認済みPlan(JSON)を実行(#34との連携。`approved: true`が必須) |
+| `--non-interactive` | 非対話実行を明示 |
+
+終了コード: `0` = 成功 / `1` = 実行失敗・停止 / `2` = 入力不正・Workflow決定不能 / `3` = Plan未承認。
+
+実行の流れ: Goal → Decision Engine(Workflow選択) → Execution Engine → Runtime Adapter(OpenCode #32 / Mock) → Guardrails(#27) → Mechanical Verification(#28) → Retry/Fallback → Execution Result。実行の観測記録(Model Execution Record)と成果物は指定したStoreへ永続化されます。
+
 ## 対応Workflow
 
 | intent | Workflow | 用途 |
