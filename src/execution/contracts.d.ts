@@ -326,6 +326,18 @@ export type ModelExecutionRecord = {
     fromModel?: string;
     toProvider?: string;
     toModel?: string;
+    /** Error category that triggered the fallback (Issue #23). */
     reason?: string;
+    /** Number of fallback switches (successful primary = null/0). */
+    count?: number;
+    /** Every candidate attempt in order, primary first. */
+    attempts?: readonly {
+      provider: string;
+      model: string;
+      status: string;
+      errorCategory: string | null;
+    }[];
   } | null;
+  /** Number of fallback switches performed (Issue #23). */
+  fallbackCount: number | null;
 };

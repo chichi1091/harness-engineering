@@ -129,7 +129,10 @@ export function toStepExecutor(adapter) {
  *   durationMs?: number | null,
  *   sessionId?: string,
  *   escalation?: import("./contracts.js").RuntimeExecutionMetadata["escalation"],
- *   fallback?: import("./contracts.js").RuntimeExecutionMetadata["fallback"]
+ *   fallback?: import("./contracts.js").RuntimeExecutionMetadata["fallback"],
+ *   fallbackCount?: number,
+ *   fallbackReason?: string,
+ *   fallbackChain?: import("./contracts.js").RuntimeExecutionMetadata["fallbackChain"]
  * }} metadata
  * @returns {import("./contracts.js").RuntimeExecutionMetadata}
  */
@@ -146,7 +149,10 @@ export function buildRuntimeMetadata({
   durationMs,
   sessionId,
   escalation,
-  fallback
+  fallback,
+  fallbackCount,
+  fallbackReason,
+  fallbackChain
 }) {
   const category = RUNTIME_ERROR_CATEGORIES.includes(errorCategory) ? errorCategory : undefined;
   return {
@@ -162,6 +168,9 @@ export function buildRuntimeMetadata({
     ...(durationMs !== undefined ? { durationMs } : {}),
     ...(sessionId !== undefined ? { sessionId } : {}),
     ...(escalation !== undefined ? { escalation } : {}),
-    ...(fallback !== undefined ? { fallback } : {})
+    ...(fallback !== undefined ? { fallback } : {}),
+    ...(fallbackCount !== undefined ? { fallbackCount } : {}),
+    ...(fallbackReason !== undefined ? { fallbackReason } : {}),
+    ...(fallbackChain !== undefined ? { fallbackChain } : {})
   };
 }

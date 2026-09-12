@@ -109,7 +109,8 @@ export function createModelExecutionRecord({ executionId, request, outcome, star
     tokensSpent: typeof outcome.tokensSpent === "number" ? outcome.tokensSpent : null,
 
     escalation: runtimeMeta?.escalation ?? null,
-    fallback: runtimeMeta?.fallback ?? null
+    fallback: runtimeMeta?.fallback ?? null,
+    fallbackCount: typeof runtimeMeta?.fallbackCount === "number" ? runtimeMeta.fallbackCount : null
   };
 }
 
@@ -132,6 +133,8 @@ export function toModelExecutionArtifact(record) {
     attempt: record.attempt,
     runtime: record.runtime,
     status: record.status,
+    fallbackCount: record.fallbackCount ?? undefined,
+    fallback: record.fallback ?? undefined,
     record
   };
 }
