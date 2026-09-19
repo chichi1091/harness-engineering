@@ -28,6 +28,19 @@ Harness Engineering は、複数の AI を役割ごとに協調させ、ソフ�
 
 標準の機能開発フローは、Architect → Explorer → Developer → Test Engineer → Reviewer → Documentation です。
 
+## harness history(実行履歴の照会)
+
+`harness run`は既定で実行成果物を`.harness/artifacts/`(git-ignored)へ永続化します。`harness history`で過去の実行を照会できます(#29 Storeを検索するRead Model — 新しいDBは導入しません)。
+
+```sh
+node bin/harness.js history                       # 実行一覧(新着順、既定20件)
+node bin/harness.js history --limit 5 --status failed --workflow bug-fix --since 2026-09-01
+node bin/harness.js history <execution-id>        # 詳細(Steps/Retry/Fallback/Verification/Models/Artifacts)
+node bin/harness.js history <execution-id> --json # 機械可読出力
+```
+
+終了コード: `0` = 正常 / `1` = Execution not found 等 / `2` = 不正なオプション。
+
 ## harness plan(実行前の計画確認)と Plan/Run 分離
 
 実行前に「何が・どの順で・どの構成で」行われるかを確認できます。Plan生成は**副作用ゼロ**(Decision読み取りのみ。ファイル変更・プロセス実行・LLM呼出は一切なし)。

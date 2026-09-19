@@ -138,6 +138,15 @@ Goal → Decision Engine の出力を実行可能な中間表現として永続�
 - **Artifact統合(#29)**: `execution-plan` 型（planId/workflow必須）としてArtifact Storeへ保存できる
 - **#34/#35/#37の境界**: 過去実行の検索(#35)、PR作成(#37)、Issue読取(#38)は含まない。Plan ID / Execution IDで後から関連付け可能な構造のみ
 
+## Execution History
+
+過去のExecutionを照会するRead Model(Issue #35、`src/run/execution-history.js`)。新しいDBや二重保存を持たず、Artifact Store(#29)に記録済みのExecution Result / Execution Plan / Model Execution Record / Verification Resultを `execution_id` で集約して参照する。
+
+- **一覧**: `harness history`(新着順、`--limit` / `--status` / `--workflow` / `--since` フィルタ)。summaryは各executionの `execution-result` レコードから取得(決定的パス読み込みのみで高速)
+- **詳細**: `harness history <execution-id>` — goal / workflow / planId / planHash / status / duration / Steps(attempt・retry・fallback・errorCategoryごと)/ Model Execution Records / Verification gates / Guardrail拒否 / Artifact目録(ID・version・validationStatus。実体は複製しない)
+- **Secret protection**: 集約時に `redactSecrets`(#27/#22と同一の検出器)を適用し、認証情報を履歴出力に含めない
+- **CLI**: `--json` で機械可読出力。存在しないexecution idはexit 1
+
 ## Context Handoff
 
 Agent間のContext受け渡しの基本方針。重複したToken消費（同じコードや会話履歴を各Agentが読み直す）を抑えるため、**会話履歴やコード全文ではなく構造化Artifactを基本の受け渡し単位**とする。

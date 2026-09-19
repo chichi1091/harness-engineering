@@ -28,6 +28,7 @@
 import { decide } from "../decision-engine/decision-engine.js";
 import { runWorkflow } from "../execution/execution-engine.js";
 import { verifyPlanIntegrity } from "./execution-plan.js";
+import { saveArtifact } from "../artifacts/artifact-store.js";
 import { runVerification, buildVerificationArtifact, buildVerificationFailure } from "../verification/verification-engine.js";
 
 export const EXIT_CODES = Object.freeze({
@@ -167,6 +168,8 @@ export async function runHarness({
     ? withVerificationGate(executeStep, effectiveVerification)
     : executeStep;
 
+  const startedAtIso = new Date().toISOString();
+  const startedAtMs = Date.now();
   const result = await runWorkflow({
     workflow: selectedWorkflow,
     executeStep: wrappedExecuteStep,
@@ -174,6 +177,50 @@ export async function runHarness({
     executionId,
     trackModelExecutions: trackModelExecutions === true
   });
+  const completedAtIso = new Date().toISOString();
+  const durationMs = Date.now() - startedAtMs;
+
+  // --- Execution Result record (Issue #35): persist the run's final
+  // outcome so `harness history` can list and detail executions. A
+  // persistence failure is a diagnostic, not a workflow failure.
+  if (artifactStore !== undefined && executionId !== undefined) {
+    try {
+      const retryCount = Object.values(result.steps).reduce((sum, step) => sum + Math.max(0, step.executions - 1), 0);
+      const fallbackCount = result.modelExecutions.reduce((sum, record) => sum + (record.fallbackCount ?? 0), 0);
+      const failedSteps = Object.values(result.steps).filter((step) => step.status === "failed").length;
+      await saveArtifact(artifactStore, {
+        artifactId: "execution-result",
+        executionId,
+        stepId: "execution",
+        artifact: {
+          type: "execution-result",
+          produced_by: "harness",
+          unresolved: [...result.unresolved],
+          executionId,
+          status: result.status,
+          workflow: selectedWorkflow.name,
+          goal: effectiveGoal,
+          intent: effectiveIntent ?? null,
+          risk: effectiveRisk ?? null,
+          planId: plan?.planId ?? null,
+          startedAt: startedAtIso,
+          completedAt: completedAtIso,
+          durationMs,
+          totalSteps: Object.keys(result.steps).length,
+          completedSteps: result.completedSteps.length,
+          failedSteps,
+          retryCount,
+          fallbackCount,
+          failureReason: result.failure?.reason ?? null
+        }
+      });
+    } catch (error) {
+      result.diagnostics.push({
+        code: "artifact_store_error",
+        message: `execution result: ${error instanceof Error ? error.message : String(error)}`
+      });
+    }
+  }
 
   const exitCode = result.status === "completed" ? EXIT_CODES.SUCCESS : EXIT_CODES.EXECUTION_FAILED;
 

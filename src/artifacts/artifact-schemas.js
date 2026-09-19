@@ -23,7 +23,8 @@ export const ARTIFACT_TYPES = [
   "review-result",
   "verification-result",
   "model-execution-record",
-  "execution-plan"
+  "execution-plan",
+  "execution-result"
 ];
 
 const ENVELOPE_SUMMARY = "type / produced_by / unresolved";
@@ -151,6 +152,22 @@ const SCHEMAS = {
       }
       if (!isNonEmptyString(artifact.workflow)) {
         errors.push('execution-plan: "workflow" must be a non-empty string.');
+      }
+      return errors;
+    }
+  },
+  "execution-result": {
+    summary: "executionId, status(completed/failed/stopped), workflow",
+    validate(artifact) {
+      const errors = [];
+      if (!isNonEmptyString(artifact.executionId)) {
+        errors.push('execution-result: "executionId" must be a non-empty string.');
+      }
+      if (!isNonEmptyString(artifact.status)) {
+        errors.push('execution-result: "status" must be a non-empty string.');
+      }
+      if (!isNonEmptyString(artifact.workflow)) {
+        errors.push('execution-result: "workflow" must be a non-empty string.');
       }
       return errors;
     }
