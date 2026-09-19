@@ -24,6 +24,22 @@ Goal / 承認済みPlan
 - 承認済みPlan(`approved: true`)のみ実行する(#34 harness plan との最小契約)
 - Exit code: 0=成功 / 1=実行失敗・停止 / 2=入力不正・Workflow決定不能 / 3=Plan未承認・改変検出
 
+## Execution History(#35)
+
+Execution Historyは**Read Model**であり、新しいDBや二重保存を持たない。`src/run/execution-history.js` が Artifact Store(#29)を照会し、Execution単位の履歴を集約する。
+
+```text
+Artifact Store (#29: <root>/<execution_id>/<step_id>/<artifact>.v<version>.json)
+      ↓ History Query(listExecutionSummaries / getExecutionHistory)
+Execution History(Execution → Plan / Steps[attempt, retry, fallback] / Verification / Model Records / Artifacts)
+      ↓
+CLI(harness history [--json]) / 将来の #36 Visualization・#37 PR Automation
+```
+
+- **一覧**: 各executionの `execution-result` レコードのみを読む決定的パス(高速)、新着順、`limit` / `status` / `workflow` / `since` フィルタ
+- **詳細**: そのexecution配下のレコードを集約 — Plan(#34)、Step履歴(attempt/retry/fallback/errorCategory)、Model Execution Records(#22参照・再実装なし)、Verification Results(#28参照)、Guardrail拒否(#27由来のerrorCategory)、Artifact目録(ID参照・複製なし)
+- **Secret protection(#27/#22)**: 履歴から出力されるfailure reasonは既存redaction(`redactSecrets`)を通過する。生のrecordは展開しない
+
 ## Plan / Run 分離（#34）
 
 `harness plan` は Goal → Decision Engine → Execution Plan の生成までを行い、副作用を一切発生させない。`harness run --plan <file>` は承認済みPlanの `planHash` を検証し、**同一内容のPlan**だけを実行する。

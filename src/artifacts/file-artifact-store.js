@@ -71,9 +71,85 @@ export function createFileArtifactStore({ rootDirectory }) {
     kind: "file",
     rootDirectory,
 
-    async listAll() {
-      return listAll();
-    },
+  async listAll() {
+    return listAll();
+  },
+
+  /**
+   * Issue #35 (History): distinct execution ids by directory scan —
+   * one readdir of the root, no record parsing.
+   */
+  async listExecutionIds() {
+    let entries;
+    try {
+      entries = await readdir(rootDirectory, { withFileTypes: true });
+    } catch (error) {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    }
+    return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+  },
+
+  /**
+   * Issue #35 (History): all records of one execution, read from that
+   * execution's directory only (no whole-store scan).
+   */
+  async readExecution(executionId) {
+    const executionDirectory = join(rootDirectory, executionId);
+    const records = [];
+    let stepIds;
+    try {
+      stepIds = await readdir(executionDirectory, { withFileTypes: true });
+    } catch (error) {
+      if (error.code === "ENOENT") return records;
+      throw error;
+    }
+
+    for (const stepEntry of stepIds.filter((entry) => entry.isDirectory())) {
+      const stepDirectory = join(executionDirectory, stepEntry.name);
+      const files = await readdir(stepDirectory, { withFileTypes: true });
+      for (const fileEntry of files.filter((entry) => entry.isFile() && entry.name.endsWith(RECORD_EXTENSION))) {
+        try {
+          records.push(JSON.parse(await readFile(join(stepDirectory, fileEntry.name), "utf8")));
+        } catch {
+          // A corrupted record is skipped rather than breaking history;
+          // corruption remains visible because the artifact count of the
+          // execution will be lower than the file count on disk.
+        }
+      }
+    }
+    return records;
+  },
+
+  /**
+   * Issue #35 (History): fast summary read — only the execution-result
+   * record of the execution (deterministic path), not the whole tree.
+   */
+  async readExecutionResult(executionId) {
+    const stepDirectory = join(rootDirectory, executionId, "execution");
+    let files;
+    try {
+      files = await readdir(stepDirectory, { withFileTypes: true });
+    } catch (error) {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    }
+
+    const versions = files
+      .map((entry) => (entry.isFile() ? parseRecordFilename(entry.name.replace(/\.json$/, "")) : null))
+      .filter((parsed) => parsed !== null && parsed.artifactId === "execution-result")
+      .map((parsed) => parsed.version)
+      .sort((left, right) => right - left);
+
+    for (const version of versions) {
+      try {
+        return JSON.parse(await readFile(join(stepDirectory, `execution-result.v${version}${RECORD_EXTENSION}`), "utf8"));
+      } catch {
+        continue; // corrupted newest → try the next older version
+      }
+    }
+    return null;
+  },
 
     /**
      * Creates a new record file exclusively. An existing file for the

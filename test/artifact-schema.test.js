@@ -16,7 +16,7 @@ function envelope(type, overrides = {}) {
   };
 }
 
-test("型レジストリは登録済みの8型に固定される", () => {
+test("型レジストリは登録済みの9型に固定される", () => {
   assert.deepEqual(ARTIFACT_TYPES, [
     "design-result",
     "exploration-result",
@@ -25,7 +25,8 @@ test("型レジストリは登録済みの8型に固定される", () => {
     "review-result",
     "verification-result",
     "model-execution-record",
-    "execution-plan"
+    "execution-plan",
+    "execution-result"
   ]);
 });
 

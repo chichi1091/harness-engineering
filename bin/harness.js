@@ -50,7 +50,7 @@ Options:
 
 function parseArgs(argv) {
   const options = { command: null, goal: [], flags: {} };
-  const flagKeys = ["intent", "risk", "runtime", "profile", "provider", "model", "fallbacks", "gates", "verify-step", "artifacts-dir", "plan", "execution-id", "project-root", "output"];
+  const flagKeys = ["intent", "risk", "runtime", "profile", "provider", "model", "fallbacks", "gates", "verify-step", "artifacts-dir", "plan", "execution-id", "project-root", "output", "limit", "status", "workflow", "since"];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "run" && options.command === null) {
@@ -147,12 +147,77 @@ async function main() {
     await planCommand(rest);
     return;
   }
+  if (command === "history") {
+    await historyCommand(rest);
+    return;
+  }
   if (command === "run") {
     await runCommand(rest);
     return;
   }
   console.error(USAGE);
   process.exitCode = 2;
+}
+
+/**
+ * harness history (Issue #35): read-model queries over the Artifact
+ * Store (#29). No storage of its own — it references what the run wrote.
+ *
+ *   harness history [--limit N] [--status s] [--workflow w] [--since d] [--json]
+ *   harness history <execution-id> [--json]
+ */
+async function historyCommand(rest) {
+  const { listExecutionSummaries, getExecutionHistory } = await import("../src/run/execution-history.js");
+  const { formatExecutionHistoryList, formatExecutionDetail } = await import("../src/run/format-execution-history.js");
+  const { createFileArtifactStore } = await import("../src/artifacts/file-artifact-store.js");
+
+  const options = parseArgs(rest);
+  const projectRoot = resolve(options.flags["project-root"] ?? process.cwd());
+  const artifactsDirectory = resolve(options.flags["artifacts-dir"] ?? join(projectRoot, ".harness", "artifacts"));
+  const store = createFileArtifactStore({ rootDirectory: artifactsDirectory });
+
+  const executionId = options.goal !== "" ? options.goal : null;
+  const asJson = options.flags.json === true;
+  const limit = options.flags.limit !== undefined ? Number(options.flags.limit) : 20;
+  if (Number.isNaN(limit) || limit < 1) {
+    console.error(`invalid --limit: ${options.flags.limit}`);
+    process.exitCode = 2;
+    return;
+  }
+
+  if (executionId !== null) {
+    const history = await getExecutionHistory(store, { executionId });
+    if (history === null) {
+      console.error(`Execution not found: ${executionId}`);
+      process.exitCode = 1;
+      return;
+    }
+    if (asJson) {
+      console.log(JSON.stringify(history, null, 2));
+    } else {
+      for (const line of formatExecutionDetail(history)) {
+        console.log(line);
+      }
+    }
+    process.exitCode = 0;
+    return;
+  }
+
+  const summaries = await listExecutionSummaries(store, {
+    limit,
+    status: options.flags.status,
+    workflow: options.flags.workflow,
+    since: options.flags.since
+  });
+
+  if (asJson) {
+    console.log(JSON.stringify(summaries, null, 2));
+  } else {
+    for (const line of formatExecutionHistoryList(summaries)) {
+      console.log(line);
+    }
+  }
+  process.exitCode = 0;
 }
 
 /**
@@ -307,10 +372,16 @@ async function runCommand(rest) {
     };
   }
 
+  // Artifacts persist by default (`.harness/artifacts/`, git-ignored) so
+  // that `harness history` can reference the execution afterwards (#35).
   let artifactStore = null;
-  if (options.flags["artifacts-dir"] !== undefined) {
+  const artifactsDirectory = resolve(options.flags["artifacts-dir"] ?? join(projectRoot, ".harness", "artifacts"));
+  {
     const { createFileArtifactStore } = await import("../src/artifacts/file-artifact-store.js");
-    artifactStore = createFileArtifactStore({ rootDirectory: resolve(options.flags["artifacts-dir"]) });
+    artifactStore = createFileArtifactStore({ rootDirectory: artifactsDirectory });
+  }
+  if (typeof options.flags["execution-id"] !== "string" || options.flags["execution-id"] === "") {
+    options.flags["execution-id"] = `exec-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   }
 
   const fallbackCandidates = (options.flags.fallbacks ?? "")

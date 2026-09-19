@@ -341,3 +341,22 @@ export type ModelExecutionRecord = {
   /** Number of fallback switches performed (Issue #23). */
   fallbackCount: number | null;
 };
+
+/** Execution History summary (Issue #35, read model over the Artifact Store). */
+export type ExecutionSummary = {
+  executionId: string;
+  status: string;
+  goal: string | null;
+  intent: string | null;
+  risk: string | null;
+  workflow: string | null;
+  planId: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  durationMs: number | null;
+  totalSteps: number | null;
+  completedSteps: number | null;
+  failedSteps: number | null;
+  retryCount: number | null;
+  fallbackCount: number | null;
+};

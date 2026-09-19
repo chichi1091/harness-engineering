@@ -203,6 +203,19 @@ export function createMemoryArtifactStore() {
     async listAll() {
       return records.map((record) => ({ ...record }));
     },
+    /** Issue #35 (History): distinct execution ids, newest unspecified. */
+    async listExecutionIds() {
+      return [...new Set(records.map((record) => record.executionId))];
+    },
+    /** Issue #35 (History): all records of one execution. */
+    async readExecution(executionId) {
+      return records.filter((record) => record.executionId === executionId).map((record) => ({ ...record }));
+    },
+    /** Issue #35 (History): the execution-result record of one execution. */
+    async readExecutionResult(executionId) {
+      const found = records.find((record) => record.executionId === executionId && record.artifactId === "execution-result");
+      return found ? { ...found } : null;
+    },
     async writeRecord(record) {
       const duplicate = records.some((candidate) =>
         candidate.executionId === record.executionId &&
