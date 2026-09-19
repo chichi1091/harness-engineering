@@ -28,6 +28,27 @@ Harness Engineering は、複数の AI を役割ごとに協調させ、ソフ�
 
 標準の機能開発フローは、Architect → Explorer → Developer → Test Engineer → Reviewer → Documentation です。
 
+## Skills(専門手順の再利用)
+
+繰り返し利用する専門手順は、`skills/<skill-id>/` に Skill として定義します。Agentが「誰が作業するか」、Workflowが「作業の順序」を担うのに対し、Skillは「その作業をどう実施するか」を担当します。
+
+```text
+skills/
+  unit-test-design/
+    skill.yaml   # metadata(id / version / capabilities / triggers / appliesTo / procedure)
+    SKILL.md     # 本文(選択されたときだけlazy load)
+  security-review/
+    skill.yaml
+    SKILL.md
+```
+
+Registryはmetadataのみを読み、**選択されたSkillの本文だけ**が実行時にContextへ注入されます(lazy loading — 未使用SkillがContextへ入ることはありません)。Skillに権限を付与する記述は効果がなく、実行時の強制は必ずAction Guardrailsが担当します。
+
+```sh
+node bin/harness.js skills list
+node bin/harness.js skills show unit-test-design
+```
+
 ## harness history(実行履歴の照会)
 
 `harness run`は既定で実行成果物を`.harness/artifacts/`(git-ignored)へ永続化します。`harness history`で過去の実行を照会できます(#29 Storeを検索するRead Model — 新しいDBは導入しません)。

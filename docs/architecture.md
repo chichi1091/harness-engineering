@@ -24,6 +24,22 @@ Goal / 承認済みPlan
 - 承認済みPlan(`approved: true`)のみ実行する(#34 harness plan との最小契約)
 - Exit code: 0=成功 / 1=実行失敗・停止 / 2=入力不正・Workflow決定不能 / 3=Plan未承認・改変検出
 
+## Skills（Lazy Loading）
+
+Skill（Issue #30、`src/skills/`）は繰り返し利用する専門手順であり、Agent（誰が）/ Workflow（順序）とは責務が分離される。Registryは `skills/<id>/skill.yaml` のmetadataのみを読み、本文（`SKILL.md`）は選択されたStepでのみロードされる。
+
+```text
+Skill Registry（metadataのみ）
+  ↓ selectSkillsForStep（Step / intent / 明示指定 → 1件=selected、0件=none、複数=ambiguous）
+Load ONLY selected skill（loadSkillContent）
+  ↓ request.skills（#31契約）
+Runtime Adapter（promptへ注入）→ Guardrails(#27) Enforcement（Skillでは迂回・緩和不可）
+```
+
+- **未使用SkillはContextに含まれない**（lazy loading — テストで保証）
+- 選択は保守的: 複数候補は `ambiguous` として明示選択を要求し、自動選択しない
+- Skillは権限を持たない。危険な手順を含んでも実行はGuardrails(#27)で拒否される。本文にuntrusted boundary markerが含まれるSkillはロード拒否
+
 ## Execution History(#35)
 
 Execution Historyは**Read Model**であり、新しいDBや二重保存を持たない。`src/run/execution-history.js` が Artifact Store(#29)を照会し、Execution単位の履歴を集約する。

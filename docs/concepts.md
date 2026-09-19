@@ -236,6 +236,18 @@ Agent間で受け渡す構造化成果物は共通Schema（`src/artifacts/artifa
 
 Workflowの `input` / `output` エントリは、任意記述の文字列または `{ artifact: <型ID>, summary }` のオブジェクト。`validate:workflows` が型IDを登録済みSchemaと突合する。OpenCode Adapterは選択Workflowが使う型の必須フィールド一覧をDelegationコマンドの Artifact contracts セクションとして次のAgentへ引き渡す。`validateArtifact(artifact)` が個々の成果物の検証を担う。
 
+## Skill
+
+特定の作業を繰り返し実行するための、再利用可能な手順・知識・ルール（Issue #30、`src/skills/skill-registry.js`）。Agentが「誰が作業するか」、Workflowが「作業の順序」を担うのに対し、Skillは「その作業をどう実施するか」を担当する。**Agent / Workflowの代替にはならない。**
+
+- **定義**: `skills/<skill-id>/skill.yaml`（metadata: id / name / version / description / capabilities / triggers / inputs / outputs / procedure / appliesTo）と `skills/<skill-id>/SKILL.md`（本文）。**Metadata と本文は分離**され、Registryはmetadataのみを読む
+- **Registry**: `createSkillRegistryFromDirectory` がmetadataを読み、`validateSkillMetadata` が語彙検証する。不正なSkillはRegistryに登録されない。検索は `listSkills` / `getMetadata` / `findByCapability` / `findCandidatesByTriggers`
+- **Lazy Loading（中心機能）**: 本文(`SKILL.md`)は `loadSkillContent(id)` で選択後にのみロードされる。未使用Skillの本文がContextに入ることはない（テストで保証）
+- **選択**: `selectSkillsForStep` は Step / intent / 明示指定から解決する — **1件=selected、0件=none、複数=ambiguous（勝手に選ばない）**。trigger照合はCandidate Discoveryの補助であり、複数候補の解決には明示選択が必要
+- **Version**: `skill_id@version` で追跡され、実行時に記録される（過去Executionの再現性を保つ）
+- **Guardrails / Security**: Skillは手順・Contextであり権限を付与しない。Skill本文が危険な操作を要求しても#27 Enforcementで拒否される。本文にuntrusted boundary markerが含まれる場合はロード自体を拒否する
+- **追跡**: ロードされたSkillはStepRecordに `skill_id@version` + `loadedAt` として記録され、Execution Result / Historyから参照できる（Planned＝Plan上の宣言、Loaded＝実行時にロード、の区別を維持）
+
 ## Artifact Store
 
 ArtifactをHarnessの正式な成果物として永続化し、Context Handoffの正本とする仕組み（Issue #29、`src/artifacts/artifact-store.js`）。

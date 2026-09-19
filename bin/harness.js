@@ -14,6 +14,8 @@ import { decide } from "../src/decision-engine/decision-engine.js";
 import { createExecutionPlan } from "../src/run/execution-plan.js";
 import { formatExecutionPlan } from "../src/run/format-run-result.js";
 import { runHarness } from "../src/run/run-harness.js";
+import { createSkillRegistryFromDirectory } from "../src/skills/skill-registry-fs.js";
+import { selectSkillsForStep } from "../src/skills/skill-registry.js";
 import { formatRunResult } from "../src/run/format-run-result.js";
 
 /**
@@ -30,6 +32,10 @@ const USAGE = `Harness Engineering
 
 Usage:
   harness run "<goal>" [options]
+  harness plan "<goal>" [options]
+  harness history [<execution-id>] [options]
+  harness skills [list]
+  harness skills show <skill-id>
 
 Options:
   --intent <intent>        Workflow intent (e.g. feature, bug-fix). Without it, provide one explicitly.
@@ -50,7 +56,7 @@ Options:
 
 function parseArgs(argv) {
   const options = { command: null, goal: [], flags: {} };
-  const flagKeys = ["intent", "risk", "runtime", "profile", "provider", "model", "fallbacks", "gates", "verify-step", "artifacts-dir", "plan", "execution-id", "project-root", "output", "limit", "status", "workflow", "since"];
+  const flagKeys = ["intent", "risk", "runtime", "profile", "provider", "model", "fallbacks", "gates", "verify-step", "artifacts-dir", "plan", "execution-id", "project-root", "output", "limit", "status", "workflow", "since", "skills"];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "run" && options.command === null) {
@@ -147,6 +153,10 @@ async function main() {
     await planCommand(rest);
     return;
   }
+  if (command === "skills") {
+    await skillsCommand(rest);
+    return;
+  }
   if (command === "history") {
     await historyCommand(rest);
     return;
@@ -221,6 +231,57 @@ async function historyCommand(rest) {
 }
 
 /**
+ * harness skills (Issue #30): metadata listing and detail view. Content
+ * (SKILL.md) is only shown via `skills show` — an explicit request.
+ */
+async function skillsCommand(rest) {
+  const options = parseArgs(rest);
+  const projectRoot = resolve(options.flags["project-root"] ?? process.cwd());
+  const registry = createSkillRegistryFromDirectory({ skillsDirectory: join(projectRoot, "skills") });
+  const { SKILL_ID_PATTERN } = await import("../src/skills/skill-registry.js");
+
+  const sub = options.goal !== "" ? options.goal.split(/\s+/)[0] : "list";
+  const argument = options.goal !== "" ? options.goal.split(/\s+/).slice(1).join(" ") : "";
+
+  if (sub === "list") {
+    const skills = await registry.listSkills();
+    console.log("Harness Skills");
+    console.log("────────────────────────────");
+    if (skills.length === 0) {
+      console.log("(no skills registered)");
+    }
+    for (const skill of skills) {
+      console.log(`${skill.id}@${skill.version}  ${skill.name}  [${skill.capabilities.join(", ")}]`);
+    }
+    for (const invalidEntry of registry.invalidSkills) {
+      console.error(`invalid skill "${invalidEntry.skillId}": ${invalidEntry.errors.join(" ")}`);
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  if (sub === "show") {
+    const skillId = argument.trim();
+    if (!SKILL_ID_PATTERN.test(skillId)) {
+      console.error(`invalid skill id: ${skillId}`);
+      process.exitCode = 2;
+      return;
+    }
+    const metadata = await registry.getMetadata(skillId);
+    if (metadata === null) {
+      console.error(`skill not found: ${skillId}`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(JSON.stringify(metadata, null, 2));
+    return;
+  }
+
+  console.error(`unknown skills subcommand: ${sub}. Use "skills list" or "skills show <id>".`);
+  process.exitCode = 2;
+}
+
+/**
  * harness plan (Issue #34): Decision-only. Builds the execution plan
  * from existing configuration and renders it. NO side effects: no file
  * writes (unless --output is given), no process execution, no network.
@@ -274,6 +335,26 @@ async function planCommand(rest) {
     .split(",").map((text) => text.trim()).filter((text) => text !== "")
     .map(parseCandidate);
 
+  // Skills (Issue #30): plan records the skill IDs selected per step.
+  // Selection reads METADATA only — plan generation never loads content.
+  const registry = createSkillRegistryFromDirectory({ skillsDirectory: join(projectRoot, "skills") });
+  const explicitSkillIds = (options.flags.skills ?? "")
+    .split(",").map((text) => text.trim()).filter((text) => text !== "");
+  const skillSelections = new Map();
+  for (const step of workflow.steps ?? []) {
+    const selection = await selectSkillsForStep({
+      registry,
+      intent: options.flags.intent,
+      stepId: step.id,
+      explicitSkillIds
+    });
+    skillSelections.set(step.id, selection);
+    if (selection.status === "ambiguous") {
+      console.error(`ambiguous skill selection for step "${step.id}": ${selection.candidates.map((skill) => skill.id).join(", ")}. Use --skills <id> to choose explicitly.`);
+    }
+  }
+  const skillsForStep = (step) => (skillSelections.get(step.id)?.skills ?? []).map((skill) => skill.id);
+
   let verification = null;
   if (options.flags.noVerify !== true) {
     const gatesFile = options.flags.gates ?? join(projectRoot, "quality-gates.yaml");
@@ -291,6 +372,7 @@ async function planCommand(rest) {
     workflow,
     profile,
     runtimeName: options.flags.runtime ?? "mock",
+    skillsForStep,
     fallbackCandidates,
     guardrailsSummary: {
       filesystem: "restricted (delete denied)",
@@ -388,7 +470,7 @@ async function runCommand(rest) {
     .split(",").map((text) => text.trim()).filter((text) => text !== "")
     .map(parseCandidate);
 
-  const executeStep = composeRuntime({
+  const baseExecuteStep = composeRuntime({
     runtime,
     profile,
     projectRoot,
@@ -396,6 +478,34 @@ async function runCommand(rest) {
     fallbackCandidates,
     flags: options.flags
   });
+
+  // Skills (Issue #30): metadata-first selection, then lazy content load
+  // for the step being executed. Selection never auto-picks among
+  // multiple candidates; it is surfaced as skillsAmbiguous instead.
+  const skillsRegistry = createSkillRegistryFromDirectory({ skillsDirectory: join(projectRoot, "skills") });
+  const explicitSkillIds = (options.flags.skills ?? "")
+    .split(",").map((text) => text.trim()).filter((text) => text !== "");
+  const executeStep = async (request) => {
+    const selection = await selectSkillsForStep({
+      registry: skillsRegistry,
+      intent: options.flags.intent,
+      stepId: request.stepId,
+      explicitSkillIds
+    });
+    if (selection.status === "selected") {
+      const skills = [];
+      for (const skill of selection.skills) {
+        const loaded = await skillsRegistry.loadSkillContent(skill.id);
+        skills.push({ id: loaded.skillId, version: loaded.version, content: loaded.content, loadedAt: new Date().toISOString() });
+      }
+      request.skills = skills;
+    }
+    const outcome = await baseExecuteStep(request);
+    if (selection.status === "ambiguous") {
+      outcome.skillsAmbiguous = selection.candidates.map((skill) => skill.id);
+    }
+    return outcome;
+  };
 
   const run = await runHarness({
     goal: effectiveGoal,

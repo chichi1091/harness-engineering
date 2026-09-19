@@ -44,6 +44,12 @@ export type StepExecutionRequest = {
   attempt: number;
   /** Latest artifact per type produced by earlier steps of this run. */
   artifacts: Readonly<Record<string, AgentArtifact>>;
+  /**
+   * Skills selected and lazily loaded for this step (Issue #30), added
+   * by the caller's composition (not by the engine). Runtime adapters
+   * embed them into the agent's instructions.
+   */
+  skills?: readonly { id: string; version: string; content: string }[];
 };
 
 export type StepExecutionOutcome = {
@@ -68,6 +74,17 @@ export type StepExecutionOutcome = {
    * debugging; structured results should be returned as artifacts.
    */
   outputText?: string;
+  /**
+   * Skills loaded for this step (Issue #30): the runtime adapter receives
+   * them through the request, and the engine records what was loaded so
+   * Execution History can show planned vs loaded skills.
+   */
+  skills?: readonly import("../skills/contracts.js").LoadedSkill[];
+  /**
+   * Skill candidates that could not be auto-selected (ambiguous). The
+   * step runs WITHOUT skill content; an explicit choice is required.
+   */
+  skillsAmbiguous?: readonly string[];
 };
 
 export type StepExecutor = (request: StepExecutionRequest) => StepExecutionOutcome | Promise<StepExecutionOutcome>;
@@ -240,6 +257,10 @@ export type StepRecord = {
   runtime: import("../runtimes/contracts.js").RuntimeExecutionMetadata | null;
   /** Raw text output captured by the adapter, when any. */
   outputText: string | null;
+  /** Skills loaded for this step (Issue #30). */
+  skills: readonly import("../skills/contracts.js").LoadedSkill[];
+  /** Skill candidates reported ambiguous for this step. */
+  skillsAmbiguous: readonly string[];
 };
 
 export type StepResultSummary = {

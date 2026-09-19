@@ -1,0 +1,24 @@
+id: unit-test-design
+name: Unit Test Design
+version: 1.0.0
+description: 受入条件をテスト観点へ変換し、単体テストを設計・実装する専門手順
+capabilities:
+  - test_design
+  - test_implementation
+triggers:
+  - 単体テスト
+  - テスト設計
+  - unit test
+inputs:
+  - 受入条件
+  - implementation-result
+outputs:
+  - test-result
+appliesTo:
+  steps:
+    - test
+procedure:
+  - 受入条件をテスト観点ごとに分解する
+  - 正常系・異常系・境界値のテストケースを列挙する
+  - 各テストケースを自動テストとして実装する
+  - テストを実行し、結果と未検証領域を記録する

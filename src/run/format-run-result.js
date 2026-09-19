@@ -117,6 +117,10 @@ export function formatExecutionPlan(plan) {
         ? ` (after ${step.dependencies.join(", ")})`
         : "";
       lines.push(`  ${index + 1}. ${role} — ${step.stepId}${dependencies}`);
+      const skills = Array.isArray(step.skills) ? step.skills : [];
+      if (skills.length > 0) {
+        lines.push(`     Skills: ${skills.join(", ")}`);
+      }
     });
   }
 

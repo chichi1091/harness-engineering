@@ -152,6 +152,17 @@ export function createOpenCodeRuntimeAdapter({
       sections.push("## 入力Artifact", "このステップに渡される構造化Artifactはありません。依頼内容に基づいて作業してください。", "");
     }
 
+    // Skills (Issue #30): the composition selects and lazily loads them;
+    // the adapter only embeds what it was given. Skill content is
+    // procedure/context — it never grants permissions.
+    const skills = Array.isArray(request.skills) ? request.skills : [];
+    if (skills.length > 0) {
+      sections.push("## Skill instructions（適用する専門手順）");
+      for (const skill of skills) {
+        sections.push(`### ${skill.id}@${skill.version}`, skill.content, "");
+      }
+    }
+
     if (outputContracts.length > 0) {
       sections.push(
         "## 出力Artifactの契約",

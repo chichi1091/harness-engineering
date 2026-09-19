@@ -36,6 +36,10 @@ export const EXECUTION_PLAN_ARTIFACT_TYPE = "execution-plan";
  * Builds an execution plan from the Decision outcome and configuration.
  * Pure: reads only the supplied objects and hashes the result.
  *
+ * `skillsForStep` (Issue #30) is an optional pure resolver: given one
+ * step it returns the ids of skills PLANNED for it. Plan generation
+ * never loads skill content — only ids are recorded.
+ *
  * @param {{
  *   goal: string,
  *   intent: string,
@@ -46,6 +50,7 @@ export const EXECUTION_PLAN_ARTIFACT_TYPE = "execution-plan";
  *   fallbackCandidates?: readonly { provider: string, model: string }[],
  *   guardrailsSummary?: Record<string, string> | null,
  *   verification?: { stepId?: string, gates?: readonly string[] } | null,
+ *   skillsForStep?: (step: Record<string, unknown>) => readonly string[],
  *   now?: string
  * }} options
  * @returns {ExecutionPlan}
@@ -60,6 +65,7 @@ export function createExecutionPlan({
   fallbackCandidates = [],
   guardrailsSummary = null,
   verification = null,
+  skillsForStep,
   now
 }) {
   const steps = (Array.isArray(workflow.steps) ? workflow.steps : []).map((step, index, all) => ({
@@ -68,7 +74,8 @@ export function createExecutionPlan({
     agent: step.agent,
     purpose: step.gate,
     tokenBudget: step.token_budget ?? null,
-    dependencies: index === 0 ? [] : [all[index - 1].id]
+    dependencies: index === 0 ? [] : [all[index - 1].id],
+    skills: typeof skillsForStep === "function" ? [...skillsForStep(step)] : []
   }));
 
   const tokenBudget = {
