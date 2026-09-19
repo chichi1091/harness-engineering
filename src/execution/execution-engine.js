@@ -329,7 +329,12 @@ export async function runWorkflow({ workflow, executeStep, maxStepExecutions, ar
       // tracking (Issue #22) and fallback decisions (Issue #23) can be
       // built on the execution result without re-running anything.
       runtime: isRecord(outcome.runtime) ? outcome.runtime : null,
-      outputText: typeof outcome.outputText === "string" ? outcome.outputText : null
+      outputText: typeof outcome.outputText === "string" ? outcome.outputText : null,
+      // Skills actually loaded for this step (Issue #30) and candidates
+      // reported ambiguous - recorded so history can distinguish planned
+      // vs loaded skills.
+      skills: Array.isArray(outcome.skills) ? outcome.skills : [],
+      skillsAmbiguous: Array.isArray(outcome.skillsAmbiguous) ? outcome.skillsAmbiguous : []
     };
     recordsByStep.get(step.id).push(record);
     trace.push({ stepId: step.id, attempt, status });
@@ -353,18 +358,28 @@ export async function runWorkflow({ workflow, executeStep, maxStepExecutions, ar
     modelExecutions.push(modelExecution);
 
     if (artifactStore !== undefined && trackModelExecutions === true) {
-      try {
-        await saveArtifact(artifactStore, {
-          artifactId: "model-execution-record",
-          executionId: executionId,
-          stepId: step.id,
-          artifact: toModelExecutionArtifact(modelExecution)
-        });
-      } catch (error) {
+      // A record without runtime metadata cannot be attributed to any
+      // runtime/provider/model — skip persistence rather than persisting
+      // an untrackable record (Issue #22 vocabulary requires it).
+      if (modelExecution.runtime === null) {
         diagnostics.push({
-          code: "artifact_store_error",
-          message: `step "${step.id}": model execution record: ${error instanceof Error ? error.message : String(error)}`
+          code: "model_execution_record_skipped",
+          message: `step "${step.id}": runtime metadata was not reported; the model execution record was not persisted.`
         });
+      } else {
+        try {
+          await saveArtifact(artifactStore, {
+            artifactId: "model-execution-record",
+            executionId: executionId,
+            stepId: step.id,
+            artifact: toModelExecutionArtifact(modelExecution)
+          });
+        } catch (error) {
+          diagnostics.push({
+            code: "artifact_store_error",
+            message: `step "${step.id}": model execution record: ${error instanceof Error ? error.message : String(error)}`
+          });
+        }
       }
     }
 

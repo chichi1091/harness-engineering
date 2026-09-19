@@ -1,0 +1,24 @@
+id: security-review
+name: Security Review
+version: 1.0.0
+description: 変更差分をセキュリティ観点でレビューし、重要度付きの指摘を生成する専門手順
+capabilities:
+  - security_review
+  - code_review
+triggers:
+  - セキュリティ
+  - security
+  - 認証
+inputs:
+  - review-result
+  - 変更差分
+outputs:
+  - review-result
+appliesTo:
+  steps:
+    - review
+procedure:
+  - 入力検証と認証・認可の境界を確認する
+  - 秘密情報のハードコードと漏洩経路を確認する
+  - 依存関係の既知の脆弱性を確認する
+  - 指摘をSeverity付きで review-result に記録する
