@@ -16,6 +16,10 @@ import { formatExecutionPlan } from "../src/run/format-run-result.js";
 import { runHarness } from "../src/run/run-harness.js";
 import { createSkillRegistryFromDirectory } from "../src/skills/skill-registry-fs.js";
 import { selectSkillsForStep } from "../src/skills/skill-registry.js";
+import { createGitHubIssueResolver } from "../src/issues/github-issue-adapter.js";
+import { createMockIssueResolver } from "../src/issues/mock-issue-adapter.js";
+import { resolveIssueInput, parseIssueUrl } from "../src/issues/issue-resolver.js";
+import { execFile as execFileCb } from "node:child_process";
 import { formatRunResult } from "../src/run/format-run-result.js";
 
 /**
@@ -56,7 +60,7 @@ Options:
 
 function parseArgs(argv) {
   const options = { command: null, goal: [], flags: {} };
-  const flagKeys = ["intent", "risk", "runtime", "profile", "provider", "model", "fallbacks", "gates", "verify-step", "artifacts-dir", "plan", "execution-id", "project-root", "output", "limit", "status", "workflow", "since", "skills"];
+  const flagKeys = ["intent", "risk", "runtime", "profile", "provider", "model", "fallbacks", "gates", "verify-step", "artifacts-dir", "plan", "execution-id", "project-root", "output", "limit", "status", "workflow", "since", "skills", "issue", "issue-url", "repo", "issue-source", "allow-closed-issue"];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "run" && options.command === null) {
@@ -66,6 +70,7 @@ function parseArgs(argv) {
     if (arg === "--non-interactive") { options.flags.nonInteractive = true; continue; }
     if (arg === "--no-verify") { options.flags.noVerify = true; continue; }
     if (arg === "--json") { options.flags.json = true; continue; }
+    if (arg === "--allow-closed-issue") { options.flags["allow-closed-issue"] = true; continue; }
     if (arg.startsWith("--")) {
       const key = arg.slice(2);
       if (!flagKeys.includes(key)) {
@@ -93,6 +98,90 @@ function resolveModelForRole(profile, role) {
     return { provider: assignment.provider, model: assignment.model };
   }
   return resolveTierModel(profile?.model_tiers, assignment?.tier) ?? null;
+}
+
+function inferRepositoryFromGit(projectRoot) {
+  return new Promise((resolveInfer) => {
+    execFileCb("git", ["remote", "get-url", "origin"], { cwd: projectRoot, timeout: 10000, windowsHide: true }, (error, stdout) => {
+      if (error !== null) return resolveInfer(null);
+      const url = String(stdout).trim();
+      const ssh = url.match(/^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/i);
+      const https = url.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/i);
+      const match = ssh ?? https;
+      resolveInfer(match === null ? null : `${match[1]}/${match[2]}`);
+    });
+  });
+}
+
+/**
+ * Issue #38: resolves `--issue` / `--issue-url` into a HarnessInput via
+ * the configured Issue Resolver (gh by default, mock for tests).
+ * Returns { exitCode, message } on failure or { input } on success.
+ */
+async function resolveIssueInputFromFlags(options, projectRoot) {
+  const issueFlag = options.flags.issue;
+  const issueUrlFlag = options.flags["issue-url"];
+  if (issueFlag === undefined && issueUrlFlag === undefined) {
+    return { input: null };
+  }
+
+  let repository = options.flags.repo ?? null;
+  let issueNumber = null;
+
+  if (issueUrlFlag !== undefined) {
+    const parsed = parseIssueUrl(issueUrlFlag);
+    if (parsed === null) {
+      return { exitCode: 2, message: `invalid issue URL: ${issueUrlFlag} (expected https://github.com/owner/repo/issues/<number>)` };
+    }
+    repository = parsed.repository;
+    issueNumber = parsed.issueNumber;
+  } else if (!/^\d{1,9}$/.test(String(issueFlag ?? ""))) {
+    return { exitCode: 2, message: `invalid issue number: ${issueFlag}` };
+  } else {
+    issueNumber = Number(issueFlag);
+  }
+
+  const source = options.flags["issue-source"] ?? "gh";
+  if (repository === null && source === "gh") {
+    repository = await inferRepositoryFromGit(projectRoot);
+  }
+  if (repository === null) {
+    if (source === "mock") {
+      repository = "mock/repo"; // mock resolver ignores the repository
+    } else {
+      return { exitCode: 2, message: "repositoryを特定できませんでした。--repo owner/repo を指定してください。" };
+    }
+  }
+
+  let resolver;
+  if (source === "mock") {
+    resolver = createMockIssueResolver();
+  } else {
+    resolver = createGitHubIssueResolver({ cwd: projectRoot });
+  }
+
+  const resolution = await resolver.resolveIssue({ repository, issueNumber });
+  if (resolution.ok === false) {
+    const category = resolution.error.code;
+    const exitCode = category === "not_found" || category === "invalid_input" ? 2 : 1;
+    return { exitCode, message: `Issue取得に失敗しました（${category}）: ${resolution.error.message}` };
+  }
+
+  const result = resolveIssueInput({
+    issue: resolution.issue,
+    intent: options.flags.intent,
+    risk: options.flags.risk,
+    allowClosedIssue: options.flags["allow-closed-issue"] === true
+  });
+
+  if (result.status === "invalid") {
+    return { exitCode: 2, message: result.message };
+  }
+  if (result.status === "issue_closed") {
+    return { exitCode: 3, message: result.message };
+  }
+
+  return { input: result.input, warnings: result.warnings };
 }
 
 function parseCandidate(text) {
@@ -290,7 +379,20 @@ async function planCommand(rest) {
   const options = parseArgs(rest);
   const projectRoot = resolve(options.flags["project-root"] ?? process.cwd());
 
-  if (options.goal === "") {
+  let issueInput = null;
+  const issueResolution = await resolveIssueInputFromFlags(options, projectRoot);
+  if (issueResolution.exitCode !== undefined) {
+    console.error(issueResolution.message);
+    process.exitCode = issueResolution.exitCode;
+    return;
+  }
+  issueInput = issueResolution.input;
+  if (issueInput !== null) {
+    options.flags.intent = options.flags.intent ?? issueInput.intent;
+  }
+
+  const effectiveGoalPlan = options.goal !== "" ? options.goal : issueInput?.goal ?? "";
+  if (effectiveGoalPlan === "") {
     console.error(USAGE);
     process.exitCode = 2;
     return;
@@ -317,7 +419,7 @@ async function planCommand(rest) {
   const request = {
     intent: options.flags.intent,
     risk: options.flags.risk,
-    goal: options.goal
+    goal: effectiveGoalPlan
   };
   const decision = decide({ request, workflowRegistry });
 
@@ -366,13 +468,16 @@ async function planCommand(rest) {
   }
 
   const plan = createExecutionPlan({
-    goal: options.goal,
+    goal: effectiveGoalPlan,
     intent: options.flags.intent ?? decision.selectedWorkflow.name,
     risk: options.flags.risk,
     workflow,
     profile,
     runtimeName: options.flags.runtime ?? "mock",
     skillsForStep,
+    issueContext: issueInput !== null
+      ? { goal: issueInput.goal, source: issueInput.source, untrusted: issueInput.context.untrustedEnvelope }
+      : null,
     fallbackCandidates,
     guardrailsSummary: {
       filesystem: "restricted (delete denied)",
@@ -391,6 +496,10 @@ async function planCommand(rest) {
     for (const line of formatExecutionPlan(plan)) {
       console.log(line);
     }
+    if (issueInput !== null) {
+      const source = issueInput.source;
+      console.log(`Source: GitHub Issue #${source.issueNumber} (${source.repository})`);
+    }
   }
 
   if (options.flags.output !== undefined) {
@@ -406,6 +515,15 @@ async function runCommand(rest) {
 
   const projectRoot = resolve(options.flags["project-root"] ?? process.cwd());
 
+  // Issue resolution (#38) comes before the goal check: the issue may
+  // carry the goal itself.
+  const issueResolution = await resolveIssueInputFromFlags(options, projectRoot);
+  if (issueResolution.exitCode !== undefined) {
+    console.error(issueResolution.message);
+    process.exitCode = issueResolution.exitCode;
+    return;
+  }
+
   // Plan loading comes before the goal check: an approved plan may carry
   // the goal itself (#34 boundary — minimal plan contract only).
   let plan = null;
@@ -414,8 +532,9 @@ async function runCommand(rest) {
   }
 
   // The plan may carry the goal either at the top level (minimal
-  // contract) or under task.goal (#34 plan shape).
-  const effectiveGoal = options.goal !== "" ? options.goal : plan?.task?.goal ?? plan?.goal;
+  // contract) or under task.goal (#34 plan shape). CLI goal and issue
+  // goal (#38) take precedence over the plan goal, in that order.
+  const effectiveGoal = options.goal !== "" ? options.goal : issueResolution.input?.goal ?? plan?.task?.goal ?? plan?.goal;
   if (typeof effectiveGoal !== "string" || effectiveGoal.trim() === "") {
     console.error(USAGE);
     process.exitCode = 2;
@@ -509,6 +628,7 @@ async function runCommand(rest) {
 
   const run = await runHarness({
     goal: effectiveGoal,
+    input: issueResolution.input ?? null,
     intent: options.flags.intent,
     risk: options.flags.risk,
     workflowRegistry,

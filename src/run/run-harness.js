@@ -29,6 +29,7 @@ import { decide } from "../decision-engine/decision-engine.js";
 import { runWorkflow } from "../execution/execution-engine.js";
 import { verifyPlanIntegrity } from "./execution-plan.js";
 import { saveArtifact } from "../artifacts/artifact-store.js";
+import { buildExecutionContextFromInput } from "../issues/issue-resolver.js";
 import { runVerification, buildVerificationArtifact, buildVerificationFailure } from "../verification/verification-engine.js";
 
 export const EXIT_CODES = Object.freeze({
@@ -62,7 +63,9 @@ export async function runHarness({
   executionId,
   trackModelExecutions,
   verification = null,
-  plan = null
+  plan = null,
+  input = null,
+  nonInteractive = false
 }) {
   // --- Plan approval (#34 boundary): a plan that was not explicitly
   // approved by a human is never executed.
@@ -97,9 +100,9 @@ export async function runHarness({
   }
 
   // --- Request assembly: CLI flags win, plan fields fill the gaps.
-  const effectiveGoal = firstNonEmpty(goal, plan?.task?.goal, plan?.goal);
-  const effectiveIntent = firstNonEmpty(intent, plan?.task?.intent, plan?.intent);
-  const effectiveRisk = firstNonEmpty(risk, plan?.task?.risk, plan?.risk);
+  const effectiveGoal = firstNonEmpty(goal, input?.goal, plan?.task?.goal, plan?.goal);
+  const effectiveIntent = firstNonEmpty(intent, input?.intent, plan?.task?.intent, plan?.intent);
+  const effectiveRisk = firstNonEmpty(risk, input?.risk, plan?.task?.risk, plan?.risk);
 
   if (typeof effectiveGoal !== "string" || effectiveGoal.trim() === "") {
     return {
@@ -170,12 +173,16 @@ export async function runHarness({
 
   const startedAtIso = new Date().toISOString();
   const startedAtMs = Date.now();
+  const executionContext = input !== null
+    ? buildExecutionContextFromInput(input)
+    : null;
   const result = await runWorkflow({
     workflow: selectedWorkflow,
     executeStep: wrappedExecuteStep,
     artifactStore,
     executionId,
-    trackModelExecutions: trackModelExecutions === true
+    trackModelExecutions: trackModelExecutions === true,
+    executionContext: executionContext ?? undefined
   });
   const completedAtIso = new Date().toISOString();
   const durationMs = Date.now() - startedAtMs;
@@ -202,6 +209,7 @@ export async function runHarness({
           goal: effectiveGoal,
           intent: effectiveIntent ?? null,
           risk: effectiveRisk ?? null,
+          source: input?.source ?? null,
           planId: plan?.planId ?? null,
           startedAt: startedAtIso,
           completedAt: completedAtIso,
@@ -230,6 +238,8 @@ export async function runHarness({
     workflowName: selectedWorkflow.name,
     executionId: executionId ?? null,
     result,
+    input,
+    nonInteractive,
     message: summarize(result, selectedWorkflow)
   };
 }

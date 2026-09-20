@@ -49,6 +49,22 @@ node bin/harness.js skills list
 node bin/harness.js skills show unit-test-design
 ```
 
+## GitHub Issue → Harness(Issue起点の実行)
+
+GitHub IssueをHarnessの実行入力にできます(#38)。Issue取得は`gh` CLI経由のAdapterで行われ、**Issue本文はuntrusted content boundaryで包まれて**Runtimeへ渡ります — 本文の命令がGuardrailsやPolicyを変更することはありません。
+
+```sh
+node bin/harness.js plan --issue 123 --repo owner/repo --intent feature   # 実行前の計画確認
+node bin/harness.js run --issue 123 --repo owner/repo --non-interactive   # Issue起点の実行
+node bin/harness.js run --issue-url https://github.com/owner/repo/issues/123
+```
+
+- `--issue-source gh|mock`(既定`gh`。`mock`は組み込みfixture — ネットワーク不要)
+- `--repo`未指定時は`git remote get-url origin`から推測(gh使用時)
+- labels(`bug`/`feature`/`refactor`等)はintentの入力ヒントとしてDecision Engineへ渡され、Workflow選択は常に既存Decision Engineが判断します
+- closed issueは既定で拒否(`--allow-closed-issue`で明示許可)
+- Issue起点の実行は `source`(type/repository/issueNumber/url)付きでExecution ResultとHistoryへ記録されます
+
 ## harness history(実行履歴の照会)
 
 `harness run`は既定で実行成果物を`.harness/artifacts/`(git-ignored)へ永続化します。`harness history`で過去の実行を照会できます(#29 Storeを検索するRead Model — 新しいDBは導入しません)。

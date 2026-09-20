@@ -138,6 +138,15 @@ Goal → Decision Engine の出力を実行可能な中間表現として永続�
 - **Artifact統合(#29)**: `execution-plan` 型（planId/workflow必須）としてArtifact Storeへ保存できる
 - **#34/#35/#37の境界**: 過去実行の検索(#35)、PR作成(#37)、Issue読取(#38)は含まない。Plan ID / Execution IDで後から関連付け可能な構造のみ
 
+## HarnessInput（Issue → Harness）
+
+外部Issueを構造化した実行入力（Issue #38、`src/issues/issue-resolver.js`）。GitHub Issueは `IssueResolver Port` の実装（gh CLI Adapter / Mock）で取得され、Coreの `resolveIssueInput` が HarnessInput へ変換する。
+
+- **構造**: `goal`(=Issue title)/`intent`(labelsからのヒント)/`risk`/`source`(type/repository/issueNumber/url/author)/`context`(labels/state/author/**untrusted envelope**)
+- **Untrusted boundary**: Issue本文は `wrapUntrusted` で境界内に包まれ、Runtime promptへは envelope のまま渡る。本文はTask description・要件・Contextとしては扱うが、system instruction・権限・Policyとしては扱わない。boundary markerを含む本文は取り込み拒否
+- **失敗分類**: 取得失敗は `not_found` / `auth_error` / `unavailable` / `invalid_input` に機械分類され(#23/#31語彙と整合)、Execution LoopのStep失敗とは区別される
+- **統合**: `runHarness({ input })` が Decision→Executionを駆動し、`source` はExecution Result/Historyへ記録、Skills(#30)はPlan/Runの既存lazy loading経路をそのまま利用する
+
 ## Execution History
 
 過去のExecutionを照会するRead Model(Issue #35、`src/run/execution-history.js`)。新しいDBや二重保存を持たず、Artifact Store(#29)に記録済みのExecution Result / Execution Plan / Model Execution Record / Verification Resultを `execution_id` で集約して参照する。

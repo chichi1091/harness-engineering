@@ -52,6 +52,13 @@ export function formatExecutionDetail(history) {
   lines.push("Status");
   lines.push(`  ${String(history.status).toUpperCase()}`);
   if (history.workflow !== null) lines.push(`Workflow: ${history.workflow}`);
+  const source = history.source;
+  if (source !== null && source !== undefined) {
+    lines.push("Source");
+    lines.push(`  ${source.type === "github_issue" ? "GitHub Issue" : String(source.type)} #${source.issueNumber ?? "?"}`);
+    if (source.repository) lines.push(`Repository: ${source.repository}`);
+    if (source.url) lines.push(`URL: ${source.url}`);
+  }
   if (history.planId !== null) lines.push(`Plan ID: ${history.planId}`);
   if (history.planHash !== null) lines.push(`Plan Hash: ${String(history.planHash).slice(0, 16)}…`);
   if (history.startedAt !== null) lines.push(`Started: ${history.startedAt}`);
