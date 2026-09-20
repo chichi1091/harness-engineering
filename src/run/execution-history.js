@@ -218,6 +218,8 @@ export async function getExecutionHistory(store, { executionId }) {
     workflow: executionResult?.workflow ?? null,
     planId: executionResult?.planId ?? planRecords[0]?.artifact?.planId ?? null,
     planHash: planRecords[0]?.artifact?.plan?.planHash ?? null,
+    /** Issue source (Issue #38), when the run started from an external issue. */
+    source: executionResult?.source ?? null,
     startedAt: executionResult?.startedAt ?? null,
     completedAt: executionResult?.completedAt ?? null,
     durationMs: executionResult?.durationMs ?? null,

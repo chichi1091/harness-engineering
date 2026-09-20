@@ -40,6 +40,23 @@ Runtime Adapter（promptへ注入）→ Guardrails(#27) Enforcement（Skillで�
 - 選択は保守的: 複数候補は `ambiguous` として明示選択を要求し、自動選択しない
 - Skillは権限を持たない。危険な手順を含んでも実行はGuardrails(#27)で拒否される。本文にuntrusted boundary markerが含まれるSkillはロード拒否
 
+## Issue → Harness(#38)
+
+外部Issue(GitHub Issue等)をHarness実行の入力に接続する層（`src/issues/`）。CoreはGitHubを知らず、Issue取得は `IssueResolver Port` の実装(GitHub Adapter=gh CLI、Mock)に委譲される。
+
+```text
+GitHub Issue → IssueResolver Port → Issue Adapter(gh / mock)
+        ↓ resolveIssueInput(Core純粋: boundary適用・goal/context/source構築)
+HarnessInput { goal / context(untrusted envelope, labels…) / source / intent・risk hints }
+        ↓ runHarness({ input })
+Decision Engine → Execution Engine → …(#33と同一経路)
+```
+
+- **Untrusted Content Boundary(#34/#27)**: Issue本文は `wrapUntrusted` で境界内に包まれてRuntime promptへ渡る。本文の命令(`disable guardrails`等)は権限・Policy・Guardrailsを変更できず、境界markerを含む本文は取り込みを拒否する
+- **labels→intent**: labelはintentの入力ヒント(`mapLabelsToIntent`)としてDecision Engineへ渡されるのみ — Workflow選択は常に既存Decision Engine
+- **source追跡**: `source`(type/repository/issueNumber/url/author)はExecution ResultとHistoryへ記録され、#37 PR Automationの突合キーになる
+- Issue取得失敗(not_found/auth_error/unavailable)は入力段階の失敗として分類され、Developer Step失敗とは区別される。Authentication ErrorはFallback対象外(#23語彙と整合)
+
 ## Execution History(#35)
 
 Execution Historyは**Read Model**であり、新しいDBや二重保存を持たない。`src/run/execution-history.js` が Artifact Store(#29)を照会し、Execution単位の履歴を集約する。

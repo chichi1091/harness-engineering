@@ -51,6 +51,7 @@ export const EXECUTION_PLAN_ARTIFACT_TYPE = "execution-plan";
  *   guardrailsSummary?: Record<string, string> | null,
  *   verification?: { stepId?: string, gates?: readonly string[] } | null,
  *   skillsForStep?: (step: Record<string, unknown>) => readonly string[],
+ *   issueContext?: { goal?: string, source?: object, untrusted?: string | null } | null,
  *   now?: string
  * }} options
  * @returns {ExecutionPlan}
@@ -66,6 +67,7 @@ export function createExecutionPlan({
   guardrailsSummary = null,
   verification = null,
   skillsForStep,
+  issueContext = null,
   now
 }) {
   const steps = (Array.isArray(workflow.steps) ? workflow.steps : []).map((step, index, all) => ({
@@ -107,7 +109,8 @@ export function createExecutionPlan({
     retryPolicies,
     fallbackPolicy: fallback,
     guardrailsSummary,
-    verification: verification ?? null
+    verification: verification ?? null,
+    context: issueContext ?? null
   };
 
   const planHash = computePlanHash(content);

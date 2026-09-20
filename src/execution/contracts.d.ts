@@ -45,6 +45,16 @@ export type StepExecutionRequest = {
   /** Latest artifact per type produced by earlier steps of this run. */
   artifacts: Readonly<Record<string, AgentArtifact>>;
   /**
+   * Execution context supplied by the caller (Issue #38): the goal and
+   * the issue body inside the untrusted content boundary. Runtime
+   * adapters embed it into the agent's instructions.
+   */
+  context?: {
+    goal?: string;
+    untrusted?: string | null;
+    source?: unknown;
+  };
+  /**
    * Skills selected and lazily loaded for this step (Issue #30), added
    * by the caller's composition (not by the engine). Runtime adapters
    * embed them into the agent's instructions.

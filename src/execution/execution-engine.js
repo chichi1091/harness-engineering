@@ -182,7 +182,7 @@ export function validateWorkflowForExecution(workflow) {
  * }} options
  * @returns {Promise<ExecutionResult>}
  */
-export async function runWorkflow({ workflow, executeStep, maxStepExecutions, artifactStore, executionId, trackModelExecutions = false }) {
+export async function runWorkflow({ workflow, executeStep, maxStepExecutions, artifactStore, executionId, trackModelExecutions = false, executionContext }) {
   if (typeof executeStep !== "function") {
     throw new Error("executeStep must be a function: the engine never invokes an agent runtime itself.");
   }
@@ -289,7 +289,8 @@ export async function runWorkflow({ workflow, executeStep, maxStepExecutions, ar
       stepId: step.id,
       step,
       attempt,
-      artifacts: Object.fromEntries(latestArtifacts)
+      artifacts: Object.fromEntries(latestArtifacts),
+      ...(executionContext !== undefined ? { context: executionContext } : {})
     });
     const endedAtIso = new Date().toISOString();
     const measuredDurationMs = Date.now() - startedAtMs;
