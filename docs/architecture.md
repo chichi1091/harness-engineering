@@ -73,6 +73,23 @@ CLI(harness history [--json]) / 将来の #36 Visualization・#37 PR Automation
 - **詳細**: そのexecution配下のレコードを集約 — Plan(#34)、Step履歴(attempt/retry/fallback/errorCategory)、Model Execution Records(#22参照・再実装なし)、Verification Results(#28参照)、Guardrail拒否(#27由来のerrorCategory)、Artifact目録(ID参照・複製なし)
 - **Secret protection(#27/#22)**: 履歴から出力されるfailure reasonは既存redaction(`redactSecrets`)を通過する。生のrecordは展開しない
 
+## PR Automation(#37)
+
+実行完了後の安全なCommit/Push/PR作成を担う層(`src/automation/`)。**Mechanical Verification(#28)の結果が唯一の品質ゲート**であり、`decidePullRequestAutomation` が completed + verification passed + unresolvedゼロ + 必須artifact揃いを機械判定する。判定を通らなければGit操作は一切行われない。
+
+```text
+Execution Result(#21) + Verification(#28) + Issue source(#38)
+      ↓ decidePullRequestAutomation(品質ゲート)
+runPullRequestAutomation(編成)
+      ↓ GitPort(status / branch / commit / push — Guarded Runner #27 経由)
+      ↓ PullRequestPort(createPullRequest — 作成のみ、merge APIは存在しない)
+pr-automation artifact(#29/#35) + CLI表示
+```
+
+- **Guardrails維持**: 全gitコマンドはGuarded Command Runner経由で、adapter内でも `enforceAction`(git commit/push)を検査する。force push・履歴改変は既存destructive検出で拒否され、**自動mergeの機能はPortに存在しない**
+- **失敗の分離**: PR Automation失敗(ネットワーク・auth・権限)は `classifyAutomationError` で分類され、Execution Loopのコード修正サイクルには混入しない
+- **Secret protection**: commit message / PR bodyは `redactSecrets` を通過する
+
 ## Plan / Run 分離（#34）
 
 `harness plan` は Goal → Decision Engine → Execution Plan の生成までを行い、副作用を一切発生させない。`harness run --plan <file>` は承認済みPlanの `planHash` を検証し、**同一内容のPlan**だけを実行する。

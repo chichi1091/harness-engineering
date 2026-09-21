@@ -104,6 +104,16 @@ export function formatExecutionDetail(history) {
     }
   }
 
+  const prAutomationRecords = history.artifacts?.filter?.((artifact) => artifact.type === "pr-automation") ?? [];
+  if (prAutomationRecords.length > 0) {
+    lines.push("PR Automation");
+    for (const artifact of prAutomationRecords) {
+      const branch = artifact.branch ?? "?";
+      const url = artifact.pullRequestUrl ?? "(no pull request)";
+      lines.push(`  ${artifact.status.toUpperCase()} ${branch} → ${url}`);
+    }
+  }
+
   if (Array.isArray(history.guardrailDenials) && history.guardrailDenials.length > 0) {
     lines.push("Guardrail Denials");
     for (const denial of history.guardrailDenials) {

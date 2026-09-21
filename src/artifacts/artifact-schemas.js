@@ -24,7 +24,8 @@ export const ARTIFACT_TYPES = [
   "verification-result",
   "model-execution-record",
   "execution-plan",
-  "execution-result"
+  "execution-result",
+  "pr-automation"
 ];
 
 const ENVELOPE_SUMMARY = "type / produced_by / unresolved";
@@ -168,6 +169,23 @@ const SCHEMAS = {
       }
       if (!isNonEmptyString(artifact.workflow)) {
         errors.push('execution-result: "workflow" must be a non-empty string.');
+      }
+      return errors;
+    }
+  },
+  "pr-automation": {
+    summary: "executionId, status(created/skipped/failed/dry-run), reason",
+    validate(artifact) {
+      const errors = [];
+      if (!isNonEmptyString(artifact.executionId)) {
+        errors.push('pr-automation: "executionId" must be a non-empty string.');
+      }
+      const statuses = ["created", "skipped", "failed", "dry-run"];
+      if (!isNonEmptyString(artifact.status) || !statuses.includes(artifact.status)) {
+        errors.push(`pr-automation: "status" must be one of ${statuses.join(", ")}.`);
+      }
+      if (!isNonEmptyString(artifact.reason)) {
+        errors.push('pr-automation: "reason" must be a non-empty string.');
       }
       return errors;
     }
