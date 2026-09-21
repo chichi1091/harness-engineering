@@ -21,6 +21,9 @@ import { createMockIssueResolver } from "../src/issues/mock-issue-adapter.js";
 import { resolveIssueInput, parseIssueUrl } from "../src/issues/issue-resolver.js";
 import { execFile as execFileCb } from "node:child_process";
 import { formatRunResult } from "../src/run/format-run-result.js";
+import { runPullRequestAutomation } from "../src/automation/run-pr-automation.js";
+import { createGitAutomationAdapter } from "../src/automation/git-adapter.js";
+import { createGitHubPullRequestAdapter } from "../src/automation/github-pr-adapter.js";
 
 /**
  * harness CLI (Issue #33): the one-command entry point.
@@ -60,7 +63,7 @@ Options:
 
 function parseArgs(argv) {
   const options = { command: null, goal: [], flags: {} };
-  const flagKeys = ["intent", "risk", "runtime", "profile", "provider", "model", "fallbacks", "gates", "verify-step", "artifacts-dir", "plan", "execution-id", "project-root", "output", "limit", "status", "workflow", "since", "skills", "issue", "issue-url", "repo", "issue-source", "allow-closed-issue"];
+  const flagKeys = ["intent", "risk", "runtime", "profile", "provider", "model", "fallbacks", "gates", "verify-step", "artifacts-dir", "plan", "execution-id", "project-root", "output", "limit", "status", "workflow", "since", "skills", "issue", "issue-url", "repo", "issue-source", "allow-closed-issue", "pr-base", "pr-branch"];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "run" && options.command === null) {
@@ -71,6 +74,8 @@ function parseArgs(argv) {
     if (arg === "--no-verify") { options.flags.noVerify = true; continue; }
     if (arg === "--json") { options.flags.json = true; continue; }
     if (arg === "--allow-closed-issue") { options.flags["allow-closed-issue"] = true; continue; }
+    if (arg === "--create-pr") { options.flags["create-pr"] = true; continue; }
+    if (arg === "--pr-dry-run") { options.flags["pr-dry-run"] = true; continue; }
     if (arg.startsWith("--")) {
       const key = arg.slice(2);
       if (!flagKeys.includes(key)) {
@@ -640,6 +645,53 @@ async function runCommand(rest) {
     plan,
     nonInteractive: options.flags.nonInteractive === true
   });
+
+  // --- PR Automation (Issue #37): only for completed runs, only when
+  // explicitly requested (--create-pr). Git operations run through the
+  // Guarded Command Runner (#27) and the PullRequestPort can create a
+  // pull request - merging is structurally impossible here.
+  let prAutomation = null;
+  if (options.flags["create-pr"] === true) {
+    const prPolicy = {
+      shell: { execute: "allow" },
+      git: { allow_push: true, allow_destructive: false },
+      network: { allowed_hosts: [] },
+      external: { allowed_services: [] },
+      filesystem: { allow_delete: false, write_paths: [] }
+    };
+    const makeRunner = () => createNodeCommandRunner({ cwd: projectRoot, timeoutMs: 60000 }).runCommand;
+    // Git操作はgit-adapter内のenforceAction(#27)で検査されるため、
+    // ここではNode Command Runnerを直接使う(opencode構成のguarded runnerとは独立)。
+    const gitAutomation = createGitAutomationAdapter({
+      commandRunner: makeRunner(),
+      cwd: projectRoot,
+      policy: prPolicy,
+      permissions: { read: "allow", edit: "allow", write: "allow" },
+      profileMode: "write"
+    });
+    const pullRequests = createGitHubPullRequestAdapter({ commandRunner: makeRunner(), cwd: projectRoot });
+
+    prAutomation = await runPullRequestAutomation({
+      executionResult: { ...run.result, artifacts: run.result.artifacts },
+      modelExecutions: run.result.modelExecutions,
+      git: gitAutomation,
+      pullRequests,
+      repository: issueResolution?.repository ?? options.flags.repo ?? "unknown/repo",
+      targetBranch: options.flags["pr-base"] ?? "main",
+      issueSource: issueResolution.input?.source ?? null,
+      goal: effectiveGoal,
+      artifactStore,
+      dryRun: options.flags["pr-dry-run"] === true
+    });
+
+    if (prAutomation.status === "created") {
+      console.log(`Pull Request: ${prAutomation.pullRequestUrl}`);
+    } else if (prAutomation.status === "skipped") {
+      console.log(`PR automation skipped (${prAutomation.code}): ${prAutomation.reason}`);
+    } else if (prAutomation.status === "dry-run") {
+      console.log(`PR automation dry run: branch=${prAutomation.branch ?? "(none)"} commit=${prAutomation.commit ?? "(none)"}`);
+    }
+  }
 
   for (const line of formatRunResult({ ...run, goal: effectiveGoal, nonInteractive: options.flags.nonInteractive === true })) {
     console.log(line);

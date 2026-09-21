@@ -65,6 +65,18 @@ node bin/harness.js run --issue-url https://github.com/owner/repo/issues/123
 - closed issueは既定で拒否(`--allow-closed-issue`で明示許可)
 - Issue起点の実行は `source`(type/repository/issueNumber/url)付きでExecution ResultとHistoryへ記録されます
 
+## Pull Request自動作成(Issue #37)
+
+`--create-pr`を付けると、実行完了後に安全なGit操作とPull Request作成までを自動化します(#28 Mechanical Verificationが品質ゲート)。
+
+```sh
+node bin/harness.js run "..." --intent feature \
+  --create-pr --pr-base main          # 実行→検証→commit→push→PR作成
+node bin/harness.js run "..." --create-pr --pr-dry-run  # 実行予定の確認のみ
+```
+
+PR作成条件: 実行完了 + Mechanical Verification成功 + 未解決事項ゼロ + 必須artifact揃い。条件を満たさない場合はGit操作を一切行わず、理由を`pr-automation` artifactとして記録します。**mergeは自動化しません** — 人間のレビューが最終ゲートです。
+
 ## harness history(実行履歴の照会)
 
 `harness run`は既定で実行成果物を`.harness/artifacts/`(git-ignored)へ永続化します。`harness history`で過去の実行を照会できます(#29 Storeを検索するRead Model — 新しいDBは導入しません)。
