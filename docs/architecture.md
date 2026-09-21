@@ -40,6 +40,18 @@ Runtime Adapter（promptへ注入）→ Guardrails(#27) Enforcement（Skillで�
 - 選択は保守的: 複数候補は `ambiguous` として明示選択を要求し、自動選択しない
 - Skillは権限を持たない。危険な手順を含んでも実行はGuardrails(#27)で拒否される。本文にuntrusted boundary markerが含まれるSkillはロード拒否
 
+## Execution Visualization(#36)
+
+Execution VisualizationはExecution History(#35)の**投影(Projection)**であり、表示用の状態を持たない(`src/run/execution-visualization.js`)。`buildExecutionVisualization` がHistoryデータから実行フローのタイムラインを構築し、`formatExecutionVisualization` が人間可読テキストへ変換する。
+
+```text
+Execution History(#35) → buildExecutionVisualization(投影) → CLI表示(--timeline)
+```
+
+- **タイムライン**: Goal → Plan → Step attempt(役割/model/runtime/status/retry) → Verification gates → Fallback → PR Automation(Pull Request)
+- **区別表示**: Retryは `↻`(同一Stepの再実行)、Fallbackは provider/model切り替えとして明示。Escalationは記録されたデータが存在する場合のみ表示(推測しない)
+- **投影のみ**: 新規データの記録なし、#29/#35のSchema変更なし、ANSI非依存(リダイレクト後も判読可能)
+
 ## Issue → Harness(#38)
 
 外部Issue(GitHub Issue等)をHarness実行の入力に接続する層（`src/issues/`）。CoreはGitHubを知らず、Issue取得は `IssueResolver Port` の実装(GitHub Adapter=gh CLI、Mock)に委譲される。

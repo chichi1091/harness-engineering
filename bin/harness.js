@@ -21,6 +21,9 @@ import { createMockIssueResolver } from "../src/issues/mock-issue-adapter.js";
 import { resolveIssueInput, parseIssueUrl } from "../src/issues/issue-resolver.js";
 import { execFile as execFileCb } from "node:child_process";
 import { formatRunResult } from "../src/run/format-run-result.js";
+import { formatExecutionDetail, formatExecutionHistoryList } from "../src/run/format-execution-history.js";
+import { getExecutionHistory, listExecutionSummaries } from "../src/run/execution-history.js";
+import { buildExecutionVisualization, formatExecutionVisualization } from "../src/run/execution-visualization.js";
 import { runPullRequestAutomation } from "../src/automation/run-pr-automation.js";
 import { createGitAutomationAdapter } from "../src/automation/git-adapter.js";
 import { createGitHubPullRequestAdapter } from "../src/automation/github-pr-adapter.js";
@@ -63,7 +66,7 @@ Options:
 
 function parseArgs(argv) {
   const options = { command: null, goal: [], flags: {} };
-  const flagKeys = ["intent", "risk", "runtime", "profile", "provider", "model", "fallbacks", "gates", "verify-step", "artifacts-dir", "plan", "execution-id", "project-root", "output", "limit", "status", "workflow", "since", "skills", "issue", "issue-url", "repo", "issue-source", "allow-closed-issue", "pr-base", "pr-branch"];
+  const flagKeys = ["intent", "risk", "runtime", "profile", "provider", "model", "fallbacks", "gates", "verify-step", "artifacts-dir", "plan", "execution-id", "project-root", "output", "limit", "status", "workflow", "since", "skills", "issue", "issue-url", "repo", "issue-source", "allow-closed-issue", "pr-base", "pr-branch", "timeline"];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "run" && options.command === null) {
@@ -76,6 +79,7 @@ function parseArgs(argv) {
     if (arg === "--allow-closed-issue") { options.flags["allow-closed-issue"] = true; continue; }
     if (arg === "--create-pr") { options.flags["create-pr"] = true; continue; }
     if (arg === "--pr-dry-run") { options.flags["pr-dry-run"] = true; continue; }
+    if (arg === "--timeline") { options.flags.timeline = true; continue; }
     if (arg.startsWith("--")) {
       const key = arg.slice(2);
       if (!flagKeys.includes(key)) {
@@ -271,8 +275,6 @@ async function main() {
  *   harness history <execution-id> [--json]
  */
 async function historyCommand(rest) {
-  const { listExecutionSummaries, getExecutionHistory } = await import("../src/run/execution-history.js");
-  const { formatExecutionHistoryList, formatExecutionDetail } = await import("../src/run/format-execution-history.js");
   const { createFileArtifactStore } = await import("../src/artifacts/file-artifact-store.js");
 
   const options = parseArgs(rest);
@@ -298,6 +300,14 @@ async function historyCommand(rest) {
     }
     if (asJson) {
       console.log(JSON.stringify(history, null, 2));
+    } else if (options.flags.timeline === true) {
+      // Issue #36: Execution Visualization — a read-only projection of
+      // the same history data.
+      const { buildExecutionVisualization, formatExecutionVisualization } = await import("../src/run/execution-visualization.js");
+      const visualization = buildExecutionVisualization(history);
+      for (const line of formatExecutionVisualization(visualization)) {
+        console.log(line);
+      }
     } else {
       for (const line of formatExecutionDetail(history)) {
         console.log(line);
