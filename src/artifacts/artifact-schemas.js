@@ -25,7 +25,8 @@ export const ARTIFACT_TYPES = [
   "model-execution-record",
   "execution-plan",
   "execution-result",
-  "pr-automation"
+  "pr-automation",
+  "improvement-proposal"
 ];
 
 const ENVELOPE_SUMMARY = "type / produced_by / unresolved";
@@ -186,6 +187,38 @@ const SCHEMAS = {
       }
       if (!isNonEmptyString(artifact.reason)) {
         errors.push('pr-automation: "reason" must be a non-empty string.');
+      }
+      return errors;
+    }
+  },
+  "improvement-proposal": {
+    summary: "proposalId, status(proposed/approved/rejected), target(AGENTS.md/skill/guardrail), fingerprint, pattern, occurrences, evidence(executionId...), suggestion",
+    validate(artifact) {
+      const errors = [];
+      if (!isNonEmptyString(artifact.proposalId)) {
+        errors.push('improvement-proposal: "proposalId" must be a non-empty string.');
+      }
+      const statuses = ["proposed", "approved", "rejected"];
+      if (!isNonEmptyString(artifact.status) || !statuses.includes(artifact.status)) {
+        errors.push(`improvement-proposal: "status" must be one of ${statuses.join(", ")}.`);
+      }
+      const targets = ["AGENTS.md", "skill", "guardrail"];
+      if (!isNonEmptyString(artifact.target) || !targets.includes(artifact.target)) {
+        errors.push(`improvement-proposal: "target" must be one of ${targets.join(", ")}.`);
+      }
+      if (!isNonEmptyString(artifact.fingerprint)) {
+        errors.push('improvement-proposal: "fingerprint" must be a non-empty string.');
+      }
+      if (!isRecord(artifact.pattern)) {
+        errors.push('improvement-proposal: "pattern" must be an object.');
+      }
+      if (typeof artifact.occurrences !== "number" || !Number.isInteger(artifact.occurrences) || artifact.occurrences < 1) {
+        errors.push('improvement-proposal: "occurrences" must be an integer greater than or equal to 1.');
+      }
+      const evidence = requireList(artifact, "evidence", errors);
+      requireItemFields(evidence, ["executionId"], "evidence", errors);
+      if (!isRecord(artifact.suggestion)) {
+        errors.push('improvement-proposal: "suggestion" must be an object.');
       }
       return errors;
     }
