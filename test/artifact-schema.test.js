@@ -16,7 +16,7 @@ function envelope(type, overrides = {}) {
   };
 }
 
-test("型レジストリは登録済みの10型に固定される", () => {
+test("型レジストリは登録済みの11型に固定される", () => {
   assert.deepEqual(ARTIFACT_TYPES, [
     "design-result",
     "exploration-result",
@@ -27,7 +27,8 @@ test("型レジストリは登録済みの10型に固定される", () => {
     "model-execution-record",
     "execution-plan",
     "execution-result",
-    "pr-automation"
+    "pr-automation",
+    "improvement-proposal"
   ]);
 });
 
@@ -202,6 +203,44 @@ test("review-resultのfindingsはseverity/location/problemを要求する", () =
   });
 
   assert.match(validateArtifact(artifact).join("\n"), /findings\[0\].problem must be a non-empty string/);
+});
+
+test("有効なimprovement-proposalを受け入れる", () => {
+  const artifact = envelope("improvement-proposal", {
+    produced_by: "harness",
+    proposalId: "fp-0123456789ab",
+    status: "proposed",
+    target: "AGENTS.md",
+    fingerprint: "0123456789ab",
+    pattern: { workflow: "bug-fix", stepId: "implement", agent: "developer", errorCategory: "nonzero_exit" },
+    occurrences: 2,
+    threshold: 2,
+    evidence: [{ executionId: "exec-1", stepId: "implement", attempt: 1, errorCategory: "nonzero_exit", failureReason: null }],
+    suggestion: { reason: "r", suggestedRule: "rule" }
+  });
+
+  assert.deepEqual(validateArtifact(artifact), []);
+});
+
+test("improvement-proposalのstatus/target語彙と必須フィールドを検証する", () => {
+  const invalid = envelope("improvement-proposal", {
+    produced_by: "harness",
+    proposalId: "fp-0123456789ab",
+    status: "auto-approved",
+    target: "agents/",
+    fingerprint: "0123456789ab",
+    pattern: {},
+    occurrences: 0,
+    evidence: [],
+    suggestion: "not-an-object"
+  });
+
+  const errors = validateArtifact(invalid).join("\n");
+  assert.match(errors, /"status" must be one of proposed, approved, rejected/);
+  assert.match(errors, /"target" must be one of AGENTS\.md, skill, guardrail/);
+  assert.match(errors, /"occurrences" must be an integer/);
+  assert.match(errors, /"evidence" must be a non-empty list/);
+  assert.match(errors, /"suggestion" must be an object/);
 });
 
 test("型の説明は必須フィールドの要約を含む", () => {

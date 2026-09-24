@@ -91,6 +91,26 @@ node bin/harness.js history <execution-id> --json # 機械可読出力
 
 `--timeline`はExecution→Plan→Step(attempt・retry・fallback)→Verification→PR Automation→Pull Requestの流れを、#35 Historyのデータ投影として表示します(Retryは`↻`、Fallbackは明示表示、推測値なし)。終了コード: `0` = 正常 / `1` = Execution not found 等 / `2` = 不正なオプション。
 
+## harness feedback(失敗からの改善提案 #39)
+
+繰り返される失敗をExecution Historyから**機械的・決定論的に**検出し、AGENTS.md / Skill / Guardrail の改善**候補**を「提案」として人間に提示します(#39)。AIがHarnessを自己改変することはありません — 提案の生成と正本変更は完全に分離されています。
+
+```sh
+node bin/harness.js feedback                       # 失敗を集計し、threshold超過Patternの提案を生成/再利用
+node bin/harness.js feedback --threshold 3         # 繰り返し判定の閾値を変更(既定: 2)
+node bin/harness.js feedback list [--status proposed]  # 提案一覧
+node bin/harness.js feedback show <proposal-id>    # 提案詳細(Pattern / Evidence / Candidate)
+node bin/harness.js feedback approve <proposal-id> # 人間の判断を記録(正本は変更しない)
+node bin/harness.js feedback reject <proposal-id>  # 同上
+node bin/harness.js feedback detect --json         # 機械可読出力
+```
+
+- **Pattern**: `workflow | step | agent | errorCategory`(記録済みで安定したフィールドのみ。自由文のfailure reasonはKeyに入れない)。errorCategoryは#23/#27と共有の機械語彙を再利用
+- **提案の重複制御**: 提案ID `fp-<fingerprint>` はPattern内容から決定論的に導出され、同一Patternの再検出は既存提案を再利用するだけ(rejectedな提案も保持)
+- **Approval境界**: `approve`/`reject`は提案のstatus記録のみ。**正本(AGENTS.md/agents/workflows/skills/profiles)は一切変更しない** — 承認済み提案の実装は通常のフロー(branch → PR → 品質ゲート → 人間merge)で行う
+- **保存先**: `.harness/feedback/`(git-ignored、Execution Historyとは別rootで混在しない)
+- 終了コード: `0` = 正常 / `1` = Proposal not found 等 / `2` = 不正なオプション
+
 ## harness plan(実行前の計画確認)と Plan/Run 分離
 
 実行前に「何が・どの順で・どの構成で」行われるかを確認できます。Plan生成は**副作用ゼロ**(Decision読み取りのみ。ファイル変更・プロセス実行・LLM呼出は一切なし)。

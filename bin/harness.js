@@ -46,6 +46,10 @@ Usage:
   harness history [<execution-id>] [options]
   harness skills [list]
   harness skills show <skill-id>
+  harness feedback [detect] [options]      Detect repeated failures and propose improvements (Issue #39)
+  harness feedback list [--status s] [--json]
+  harness feedback show <proposal-id> [--json]
+  harness feedback approve <proposal-id> | reject <proposal-id>   Human-only decision (never changes canonical files)
 
 Options:
   --intent <intent>        Workflow intent (e.g. feature, bug-fix). Without it, provide one explicitly.
@@ -62,17 +66,20 @@ Options:
   --execution-id <id>  Explicitly specify execution ID
   --non-interactive  Explicitly declare non-interactive execution
   --project-root <dir>  Project root (default: current directory)
+  --threshold <n>  feedback: minimum occurrences for a failure pattern (default: 2)
+  --feedback-dir <dir>  feedback: proposal store directory (default: .harness/feedback)
 `;
 
 function parseArgs(argv) {
   const options = { command: null, goal: [], flags: {} };
-  const flagKeys = ["intent", "risk", "runtime", "profile", "provider", "model", "fallbacks", "gates", "verify-step", "artifacts-dir", "plan", "execution-id", "project-root", "output", "limit", "status", "workflow", "since", "skills", "issue", "issue-url", "repo", "issue-source", "allow-closed-issue", "pr-base", "pr-branch", "timeline"];
+  const flagKeys = ["intent", "risk", "runtime", "profile", "provider", "model", "fallbacks", "gates", "verify-step", "artifacts-dir", "plan", "execution-id", "project-root", "output", "limit", "status", "workflow", "since", "skills", "issue", "issue-url", "repo", "issue-source", "allow-closed-issue", "pr-base", "pr-branch", "timeline", "threshold", "feedback-dir"];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "run" && options.command === null) {
       options.command = "run";
       continue;
     }
+
     if (arg === "--non-interactive") { options.flags.nonInteractive = true; continue; }
     if (arg === "--no-verify") { options.flags.noVerify = true; continue; }
     if (arg === "--json") { options.flags.json = true; continue; }
@@ -259,6 +266,10 @@ async function main() {
     await historyCommand(rest);
     return;
   }
+  if (command === "feedback") {
+    await feedbackCommand(rest);
+    return;
+  }
   if (command === "run") {
     await runCommand(rest);
     return;
@@ -332,6 +343,133 @@ async function historyCommand(rest) {
     }
   }
   process.exitCode = 0;
+}
+
+/**
+ * harness feedback (Issue #39): detect repeated failures in the
+ * Execution History (#35) and turn them into improvement PROPOSALS for
+ * a human to review. This command is a proposal generator, not a
+ * harness mutator — it never writes AGENTS.md, agents/, workflows/,
+ * skills/ or the profile action policies. Proposals live in their own
+ * artifact store root (.harness/feedback by default) so they never mix
+ * with execution history.
+ */
+async function feedbackCommand(rest) {
+  const { createFileArtifactStore } = await import("../src/artifacts/file-artifact-store.js");
+  const { collectFailureOccurrences, buildFailurePatterns, FEEDBACK_DEFAULT_THRESHOLD } = await import("../src/feedback/failure-patterns.js");
+  const { generateImprovementProposals, listProposals, getProposal, setProposalStatus, PROPOSAL_STATUSES } = await import("../src/feedback/improvement-proposals.js");
+  const { formatFeedbackRun, formatProposalList, formatProposalDetail } = await import("../src/feedback/format-feedback.js");
+
+  const options = parseArgs(rest);
+  const projectRoot = resolve(options.flags["project-root"] ?? process.cwd());
+  const artifactsDirectory = resolve(options.flags["artifacts-dir"] ?? join(projectRoot, ".harness", "artifacts"));
+  const feedbackDirectory = resolve(options.flags["feedback-dir"] ?? join(projectRoot, ".harness", "feedback"));
+  const asJson = options.flags.json === true;
+
+  const args = options.goal !== "" ? options.goal.split(/\s+/) : [];
+  const sub = ["list", "show", "approve", "reject"].includes(args[0]) ? args[0] : "detect";
+  // `detect` may be spelled out explicitly — it is the default subcommand.
+  const argument = sub === "detect"
+    ? (args[0] === "detect" ? args.slice(1).join(" ") : args.join(" "))
+    : args.slice(1).join(" ");
+
+  if (sub === "detect" && argument !== "") {
+    console.error(`unexpected argument: ${argument}`);
+    process.exitCode = 2;
+    return;
+  }
+
+  const historyStore = createFileArtifactStore({ rootDirectory: artifactsDirectory });
+  const feedbackStore = createFileArtifactStore({ rootDirectory: feedbackDirectory });
+
+  if (sub === "detect") {
+    const threshold = options.flags.threshold !== undefined ? Number(options.flags.threshold) : FEEDBACK_DEFAULT_THRESHOLD;
+    if (Number.isNaN(threshold) || !Number.isInteger(threshold) || threshold < 1) {
+      console.error(`invalid --threshold: ${options.flags.threshold}`);
+      process.exitCode = 2;
+      return;
+    }
+
+    const occurrences = await collectFailureOccurrences(historyStore);
+    const patterns = buildFailurePatterns(occurrences, { threshold });
+    const results = await generateImprovementProposals(feedbackStore, patterns, { threshold });
+
+    if (asJson) {
+      console.log(JSON.stringify({
+        threshold,
+        patterns: patterns.map((pattern) => ({ ...pattern, proposalId: `fp-${pattern.fingerprint}` })),
+        proposals: results.map(({ proposal, ...summary }) => summary)
+      }, null, 2));
+    } else {
+      for (const line of formatFeedbackRun({ patterns, results, threshold })) {
+        console.log(line);
+      }
+    }
+    process.exitCode = 0;
+    return;
+  }
+
+  if (sub === "list") {
+    const status = options.flags.status;
+    if (status !== undefined && !PROPOSAL_STATUSES.includes(status)) {
+      console.error(`invalid --status: ${status} (expected one of ${PROPOSAL_STATUSES.join(", ")})`);
+      process.exitCode = 2;
+      return;
+    }
+    const proposals = await listProposals(feedbackStore, { status });
+    if (asJson) {
+      console.log(JSON.stringify(proposals, null, 2));
+    } else {
+      for (const line of formatProposalList(proposals)) {
+        console.log(line);
+      }
+    }
+    process.exitCode = 0;
+    return;
+  }
+
+  if (sub === "show") {
+    const proposal = argument !== "" ? await getProposal(feedbackStore, argument) : null;
+    if (proposal === null) {
+      console.error(`Proposal not found: ${argument || "(no id given)"}`);
+      process.exitCode = 1;
+      return;
+    }
+    if (asJson) {
+      console.log(JSON.stringify(proposal, null, 2));
+    } else {
+      for (const line of formatProposalDetail(proposal)) {
+        console.log(line);
+      }
+    }
+    process.exitCode = 0;
+    return;
+  }
+
+  // approve / reject: an explicit HUMAN decision on the proposal's
+  // status field only. This updates one metadata field in the feedback
+  // store — it never touches AGENTS.md, agents/, workflows/, skills/
+  // or guardrail definitions. The approved change is implemented by the
+  // human through the normal flow (branch → PR → quality gates → merge).
+  const decisionStatus = sub === "approve" ? "approved" : "rejected";
+  if (argument === "") {
+    console.error(`usage: harness feedback ${sub} <proposal-id>`);
+    process.exitCode = 2;
+    return;
+  }
+  try {
+    const proposal = await setProposalStatus(feedbackStore, argument, decisionStatus);
+    if (asJson) {
+      console.log(JSON.stringify(proposal, null, 2));
+    } else {
+      console.log(`${proposal.proposalId} → ${proposal.status}`);
+      console.log("Recorded. Canonical harness files are untouched — implement approved proposals through a normal PR and human merge.");
+    }
+    process.exitCode = 0;
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
+  }
 }
 
 /**

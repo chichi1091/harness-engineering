@@ -52,6 +52,21 @@ Execution History(#35) → buildExecutionVisualization(投影) → CLI表示(--t
 - **区別表示**: Retryは `↻`(同一Stepの再実行)、Fallbackは provider/model切り替えとして明示。Escalationは記録されたデータが存在する場合のみ表示(推測しない)
 - **投影のみ**: 新規データの記録なし、#29/#35のSchema変更なし、ANSI非依存(リダイレクト後も判読可能)
 
+## Failure Feedback(#39)
+
+失敗からHarness改善候補を**提案**する層(`src/feedback/`)。提案生成と正本変更は完全に分離されており、この層はAGENTS.md / agents/ / workflows/ / skills/ / profilesを一切書き換えない。
+
+```text
+Execution History(#35) → collectFailureOccurrences(参照) → buildFailurePatterns(group/count/threshold、決定論的)
+  → generateImprovementProposals(idempotent: fp-<fingerprint>で重複制御) → Improvement Proposal(proposed)
+  → Human Review(approve/reject は人間操作のみ) → 既存開発フロー(branch → PR → 品質ゲート → 人間merge) → Harness Updated
+```
+
+- **Pattern Key**: `workflow | stepId | agent(role) | errorCategory` — 記録済みで安定したフィールドのみ。provider/modelはfallback依存のためKeyから除外、自由文のfailure reasonはEvidence(参照+redaction)に限定
+- **重複制御**: 提案IDはPattern fingerprint(SHA-256先頭12桁)から決定論的に導出。同一Patternの再検出は既存提案を再利用し、人間の判断(rejected等)を保持する
+- **Approval境界**: `setProposalStatus` はstatusフィールドの更新のみ。検出・生成パスからは呼ばれない。approveは正本を変更しない
+- **保存**: `improvement-proposal` artifact を既存FileArtifactStore実装の別rootインスタンス(`.harness/feedback/`)に保存 — History一覧の汚染を避け、新しいDBは導入しない
+
 ## Issue → Harness(#38)
 
 外部Issue(GitHub Issue等)をHarness実行の入力に接続する層（`src/issues/`）。CoreはGitHubを知らず、Issue取得は `IssueResolver Port` の実装(GitHub Adapter=gh CLI、Mock)に委譲される。

@@ -164,6 +164,16 @@ Execution History(#35)の**投影(Projection)**(Issue #36、`src/run/execution-v
 - **区別表示**: Retry(`↻`、同一Stepの再実行)、Fallback(provider/model切り替え、`reason`付き)、Guardrail拒否、Escalation(記録がある場合のみ)を区別して表示する
 - **CLI**: `harness history <id> --timeline` でタイムライン表示(`--json` は既存History JSONのまま)
 
+## Failure Feedback
+
+Execution History(#35)から繰り返される失敗を検出し、Harness改善候補を**提案**として人間へ提示する仕組み(Issue #39、`src/feedback/`)。AIは提案するだけで、正本の変更は人間が既存開発フローで行う。
+
+- **決定論的検出**: 失敗attemptを `workflow | step | agent | errorCategory` でgroupし、threshold(既定2)以上でPatternとする。LLM判定は使わない。errorCategoryは#23/#27と共有の機械語彙。自由文のfailure reasonはKeyに入れず、Evidence(参照)として`redactSecrets()`適用の上で保持する
+- **提案の構造**: Pattern(記録済みフィールドのみ) → Evidence(executionId/発生時刻/step/attempt/errorCategory/redact済みreason — Historyは複製せず参照) → Candidate(AGENTS.md規則案 / Skill案(#30語彙) / Guardrail案(#27語彙、suggestedAction: deny))
+- **重複制御**: 提案ID `fp-<fingerprint>`(SHA-256先頭12桁)がPatternから決定論的に導出され、同一Patternの提案は絶対に増殖しない。人間がrejectした提案は再検出でも保持される
+- **Approval境界**: statusは `proposed / approved / rejected`。遷移は人間の明示操作のみ(`harness feedback approve|reject`)で、検出・生成パスはstatusを変更しない。approve後も正本は変更されず、実装はbranch → PR → 品質ゲート → 人間mergeの既存フローに従う
+- **保存**: `improvement-proposal` artifact(#29 Schema拡張)。既存Artifact Store実装の別rootインスタンス(`.harness/feedback/`)に保存し、Execution Historyと混在させない。新しいDBは導入しない
+
 ## Context Handoff
 
 Agent間のContext受け渡しの基本方針。重複したToken消費（同じコードや会話履歴を各Agentが読み直す）を抑えるため、**会話履歴やコード全文ではなく構造化Artifactを基本の受け渡し単位**とする。
