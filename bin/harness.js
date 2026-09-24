@@ -50,6 +50,10 @@ Usage:
   harness feedback list [--status s] [--json]
   harness feedback show <proposal-id> [--json]
   harness feedback approve <proposal-id> | reject <proposal-id>   Human-only decision (never changes canonical files)
+  harness maintenance [detect] [options]   Detect pruning candidates from usage/size data (Issue #40)
+  harness maintenance list [--status s] [--resource-type t] [--kind k] [--json]
+  harness maintenance show <candidate-id> [--json]
+  harness maintenance approve <candidate-id> | reject <candidate-id>   Human-only decision (never changes canonical files)
 
 Options:
   --intent <intent>        Workflow intent (e.g. feature, bug-fix). Without it, provide one explicitly.
@@ -68,11 +72,15 @@ Options:
   --project-root <dir>  Project root (default: current directory)
   --threshold <n>  feedback: minimum occurrences for a failure pattern (default: 2)
   --feedback-dir <dir>  feedback: proposal store directory (default: .harness/feedback)
+  --min-usage <n>  maintenance: low-usage threshold (default: 2)
+  --max-agents-md-bytes <n>  maintenance: flag AGENTS.md as oversized only when a limit is explicitly provided
+  --maintenance-dir <dir>  maintenance: candidate store directory (default: .harness/maintenance)
+  --resource-type <t> / --kind <k>  maintenance list: filter candidates
 `;
 
 function parseArgs(argv) {
   const options = { command: null, goal: [], flags: {} };
-  const flagKeys = ["intent", "risk", "runtime", "profile", "provider", "model", "fallbacks", "gates", "verify-step", "artifacts-dir", "plan", "execution-id", "project-root", "output", "limit", "status", "workflow", "since", "skills", "issue", "issue-url", "repo", "issue-source", "allow-closed-issue", "pr-base", "pr-branch", "timeline", "threshold", "feedback-dir"];
+  const flagKeys = ["intent", "risk", "runtime", "profile", "provider", "model", "fallbacks", "gates", "verify-step", "artifacts-dir", "plan", "execution-id", "project-root", "output", "limit", "status", "workflow", "since", "skills", "issue", "issue-url", "repo", "issue-source", "allow-closed-issue", "pr-base", "pr-branch", "timeline", "threshold", "feedback-dir", "min-usage", "max-agents-md-bytes", "maintenance-dir", "resource-type", "kind"];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "run" && options.command === null) {
@@ -270,6 +278,10 @@ async function main() {
     await feedbackCommand(rest);
     return;
   }
+  if (command === "maintenance") {
+    await maintenanceCommand(rest);
+    return;
+  }
   if (command === "run") {
     await runCommand(rest);
     return;
@@ -464,6 +476,189 @@ async function feedbackCommand(rest) {
     } else {
       console.log(`${proposal.proposalId} → ${proposal.status}`);
       console.log("Recorded. Canonical harness files are untouched — implement approved proposals through a normal PR and human merge.");
+    }
+    process.exitCode = 0;
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
+  }
+}
+
+/**
+ * harness maintenance (Issue #40): pruning candidate generator. Reads
+ * usage facts from the Execution History (#35) and measured sizes of
+ * the always-loaded rule file, and proposes REVIEW CANDIDATES with
+ * evidence. Read-only over canonical files: detection never deletes,
+ * never edits AGENTS.md / skills / workflows / guardrails, never
+ * commits — candidates are stored under .harness/maintenance (a
+ * separate artifact store root) and implemented by humans through the
+ * normal flow.
+ */
+async function maintenanceCommand(rest) {
+  const { createFileArtifactStore } = await import("../src/artifacts/file-artifact-store.js");
+  const { readFile } = await import("node:fs/promises");
+  const { analyzeUsage, guardrailUsage } = await import("../src/maintenance/usage-analysis.js");
+  const { measureRuleFileSize } = await import("../src/maintenance/size-report.js");
+  const { generateMaintenanceCandidates, listCandidates, getCandidate, setCandidateStatus, detectDuplicateSkills, detectDuplicateWorkflows, MAINTENANCE_STATUSES } = await import("../src/maintenance/candidates.js");
+  const { detectMaintenanceCandidates, duplicateCandidates, DEFAULT_MIN_USAGE } = await import("../src/maintenance/detect.js");
+  const { formatMaintenanceRun, formatCandidateList, formatCandidateDetail } = await import("../src/maintenance/format-maintenance.js");
+
+  const options = parseArgs(rest);
+  const projectRoot = resolve(options.flags["project-root"] ?? process.cwd());
+  const artifactsDirectory = resolve(options.flags["artifacts-dir"] ?? join(projectRoot, ".harness", "artifacts"));
+  const maintenanceDirectory = resolve(options.flags["maintenance-dir"] ?? join(projectRoot, ".harness", "maintenance"));
+  const asJson = options.flags.json === true;
+
+  const args = options.goal !== "" ? options.goal.split(/\s+/) : [];
+  const sub = ["list", "show", "approve", "reject"].includes(args[0]) ? args[0] : "detect";
+  const argument = sub === "detect"
+    ? (args[0] === "detect" ? args.slice(1).join(" ") : args.join(" "))
+    : args.slice(1).join(" ");
+
+  if (sub === "detect" && argument !== "") {
+    console.error(`unexpected argument: ${argument}`);
+    process.exitCode = 2;
+    return;
+  }
+
+  const maintenanceStore = createFileArtifactStore({ rootDirectory: maintenanceDirectory });
+
+  if (sub === "detect") {
+    const minUsage = options.flags["min-usage"] !== undefined ? Number(options.flags["min-usage"]) : DEFAULT_MIN_USAGE;
+    if (Number.isNaN(minUsage) || !Number.isInteger(minUsage) || minUsage < 1) {
+      console.error(`invalid --min-usage: ${options.flags["min-usage"]}`);
+      process.exitCode = 2;
+      return;
+    }
+    let maxAgentsMdBytes;
+    if (options.flags["max-agents-md-bytes"] !== undefined) {
+      maxAgentsMdBytes = Number(options.flags["max-agents-md-bytes"]);
+      if (Number.isNaN(maxAgentsMdBytes) || !Number.isInteger(maxAgentsMdBytes) || maxAgentsMdBytes < 1) {
+        console.error(`invalid --max-agents-md-bytes: ${options.flags["max-agents-md-bytes"]}`);
+        process.exitCode = 2;
+        return;
+      }
+    }
+
+    // Definitions come from the canonical loaders (metadata only —
+    // skill content stays lazily loaded, per #30).
+    const registry = createSkillRegistryFromDirectory({ skillsDirectory: join(projectRoot, "skills") });
+    const skillDefinitions = await registry.listSkills();
+    const workflowRegistry = await loadWorkflowRegistry(join(projectRoot, "workflows"));
+    const workflowDefinitions = workflowRegistry.map((workflow) => ({ name: workflow.name, routing: workflow.routing }));
+
+    // Usage and size facts.
+    const historyStore = createFileArtifactStore({ rootDirectory: artifactsDirectory });
+    const usage = await analyzeUsage(historyStore);
+    const guardrails = await guardrailUsage(historyStore);
+    const ruleFilePath = join(projectRoot, "AGENTS.md");
+    let ruleFileContent = "";
+    try {
+      ruleFileContent = await readFile(ruleFilePath, "utf8");
+    } catch {
+      ruleFileContent = ""; // no rule file: size report simply reports zeros
+    }
+    const ruleFileSize = measureRuleFileSize(ruleFileContent);
+
+    const candidates = detectMaintenanceCandidates({
+      window: usage.window,
+      skills: usage.skills,
+      workflows: usage.workflows,
+      runtimes: usage.runtimes,
+      guardrails,
+      skillDefinitions,
+      workflowDefinitions,
+      ruleFileSize,
+      options: { minUsage, maxAgentsMdBytes }
+    });
+    // Duplicate detection compares canonical definitions directly;
+    // findings carry their shared fields as evidence.
+    candidates.push(...duplicateCandidates([
+      ...detectDuplicateSkills(skillDefinitions),
+      ...detectDuplicateWorkflows(workflowDefinitions)
+    ]));
+
+    const results = await generateMaintenanceCandidates(maintenanceStore, candidates);
+
+    if (asJson) {
+      console.log(JSON.stringify({
+        minUsage,
+        window: usage.window,
+        candidates: results.map(({ candidate, stored }) => ({ ...candidate, stored }))
+      }, null, 2));
+    } else {
+      for (const line of formatMaintenanceRun({ candidates: results, window: usage.window, minUsage })) {
+        console.log(line);
+      }
+    }
+    process.exitCode = 0;
+    return;
+  }
+
+  if (sub === "list") {
+    const status = options.flags.status;
+    if (status !== undefined && !MAINTENANCE_STATUSES.includes(status)) {
+      console.error(`invalid --status: ${status} (expected one of ${MAINTENANCE_STATUSES.join(", ")})`);
+      process.exitCode = 2;
+      return;
+    }
+    let candidates;
+    try {
+      candidates = await listCandidates(maintenanceStore, {
+        status,
+        resourceType: options.flags["resource-type"],
+        kind: options.flags.kind
+      });
+    } catch (error) {
+      console.error(error.message);
+      process.exitCode = 2;
+      return;
+    }
+    if (asJson) {
+      console.log(JSON.stringify(candidates, null, 2));
+    } else {
+      for (const line of formatCandidateList(candidates)) {
+        console.log(line);
+      }
+    }
+    process.exitCode = 0;
+    return;
+  }
+
+  if (sub === "show") {
+    const candidate = argument !== "" ? await getCandidate(maintenanceStore, argument) : null;
+    if (candidate === null) {
+      console.error(`Candidate not found: ${argument || "(no id given)"}`);
+      process.exitCode = 1;
+      return;
+    }
+    if (asJson) {
+      console.log(JSON.stringify(candidate, null, 2));
+    } else {
+      for (const line of formatCandidateDetail(candidate)) {
+        console.log(line);
+      }
+    }
+    process.exitCode = 0;
+    return;
+  }
+
+  // approve / reject: an explicit HUMAN decision on the candidate's
+  // status field only. Canonical files are never touched — implement
+  // approved candidates through a normal PR and human merge.
+  const decisionStatus = sub === "approve" ? "approved" : "rejected";
+  if (argument === "") {
+    console.error(`usage: harness maintenance ${sub} <candidate-id>`);
+    process.exitCode = 2;
+    return;
+  }
+  try {
+    const candidate = await setCandidateStatus(maintenanceStore, argument, decisionStatus);
+    if (asJson) {
+      console.log(JSON.stringify(candidate, null, 2));
+    } else {
+      console.log(`${candidate.candidateId} → ${candidate.status}`);
+      console.log("Recorded. Canonical files are untouched — implement approved candidates through a normal PR and human merge.");
     }
     process.exitCode = 0;
   } catch (error) {

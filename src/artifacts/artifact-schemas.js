@@ -26,7 +26,8 @@ export const ARTIFACT_TYPES = [
   "execution-plan",
   "execution-result",
   "pr-automation",
-  "improvement-proposal"
+  "improvement-proposal",
+  "maintenance-candidate"
 ];
 
 const ENVELOPE_SUMMARY = "type / produced_by / unresolved";
@@ -219,6 +220,37 @@ const SCHEMAS = {
       requireItemFields(evidence, ["executionId"], "evidence", errors);
       if (!isRecord(artifact.suggestion)) {
         errors.push('improvement-proposal: "suggestion" must be an object.');
+      }
+      return errors;
+    }
+  },
+  "maintenance-candidate": {
+    summary: "candidateId, status(proposed/approved/rejected), kind(unused/low_usage/duplicate/oversized/usage_info), resourceType(skill/workflow/runtime/guardrail/AGENTS.md), resourceId, evidence, recommendation",
+    validate(artifact) {
+      const errors = [];
+      if (!isNonEmptyString(artifact.candidateId)) {
+        errors.push('maintenance-candidate: "candidateId" must be a non-empty string.');
+      }
+      const statuses = ["proposed", "approved", "rejected"];
+      if (!isNonEmptyString(artifact.status) || !statuses.includes(artifact.status)) {
+        errors.push(`maintenance-candidate: "status" must be one of ${statuses.join(", ")}.`);
+      }
+      const kinds = ["unused", "low_usage", "duplicate", "oversized", "usage_info"];
+      if (!isNonEmptyString(artifact.kind) || !kinds.includes(artifact.kind)) {
+        errors.push(`maintenance-candidate: "kind" must be one of ${kinds.join(", ")}.`);
+      }
+      const resourceTypes = ["skill", "workflow", "runtime", "guardrail", "AGENTS.md"];
+      if (!isNonEmptyString(artifact.resourceType) || !resourceTypes.includes(artifact.resourceType)) {
+        errors.push(`maintenance-candidate: "resourceType" must be one of ${resourceTypes.join(", ")}.`);
+      }
+      if (!isNonEmptyString(artifact.resourceId)) {
+        errors.push('maintenance-candidate: "resourceId" must be a non-empty string.');
+      }
+      if (!isRecord(artifact.evidence)) {
+        errors.push('maintenance-candidate: "evidence" must be an object.');
+      }
+      if (!isNonEmptyString(artifact.recommendation)) {
+        errors.push('maintenance-candidate: "recommendation" must be a non-empty string.');
       }
       return errors;
     }

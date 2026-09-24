@@ -111,6 +111,29 @@ node bin/harness.js feedback detect --json         # 機械可読出力
 - **保存先**: `.harness/feedback/`(git-ignored、Execution Historyとは別rootで混在しない)
 - 終了コード: `0` = 正常 / `1` = Proposal not found 等 / `2` = 不正なオプション
 
+## harness maintenance(整理候補の検出 #40)
+
+Harness自体の巨大化を防ぐため、利用実績(Execution History #35)とサイズデータから**整理候補(Pruning Candidate)**を検出し、人間に提示します(#40)。**自動削除は一切行いません** — 候補は「確認してください」という依頼であり、実施は人間が通常の開発フロー(branch → PR → 品質ゲート → 人間merge)で行います。#39 Failure Feedback(拡張の制御)と対になる「削減の制御」です。
+
+```sh
+node bin/harness.js maintenance                    # 利用実績+サイズから整理候補を検出
+node bin/harness.js maintenance --min-usage 3      # 低利用の閾値を変更(既定: 2)
+node bin/harness.js maintenance --max-agents-md-bytes 4096  # AGENTS.md上限を明示指定した場合のみoversized判定
+node bin/harness.js maintenance list [--resource-type skill] [--kind unused]
+node bin/harness.js maintenance show <candidate-id>   # Resource / Evidence / Recommendation
+node bin/harness.js maintenance approve <candidate-id>  # 人間の判断を記録(正本は変更しない)
+node bin/harness.js maintenance reject <candidate-id>
+node bin/harness.js maintenance detect --json      # 機械可読出力
+```
+
+- **検出対象**: Skill / Workflow(`unused`・`low_usage`・`duplicate`)/ AGENTS.md(`oversized` — 上限を明示指定した場合のみ)/ Runtime・Guardrail(**`usage_info`報告のみ — 安全機構・静的参照されるコードは削除候補にしない**)
+- **利用実績は実測のみ**: Skill利用はexecution-planに記録されたskill id(#34)、Workflow利用はexecution-result、観測execution総数をevidenceとして必ず添付(Historyが薄いことが見える)。**History未記録=不要とは断定しない**
+- **AGENTS.md計測**: bytes / lines / characters(実測)+ estimated tokens(文字数÷4の**推定値** — Tokenizer差異があるため断定しない)
+- **重複検出は機械比較のみ**: Skill=capabilities+appliesTo.steps完全一致、Workflow=routing intentsの集合一致(LLM/Embedding不使用)
+- **Approval境界**: `approve`/`reject`はcandidateのstatus記録のみ。正本(AGENTS.md/skills/workflows/profiles)は一切変更しない
+- **保存先**: `.harness/maintenance/`(git-ignored、#39の`.harness/feedback`と分離)
+- 終了コード: `0` = 正常 / `1` = Candidate not found 等 / `2` = 不正なオプション
+
 ## harness plan(実行前の計画確認)と Plan/Run 分離
 
 実行前に「何が・どの順で・どの構成で」行われるかを確認できます。Plan生成は**副作用ゼロ**(Decision読み取りのみ。ファイル変更・プロセス実行・LLM呼出は一切なし)。

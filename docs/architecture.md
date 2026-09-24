@@ -67,6 +67,22 @@ Execution History(#35) → collectFailureOccurrences(参照) → buildFailurePat
 - **Approval境界**: `setProposalStatus` はstatusフィールドの更新のみ。検出・生成パスからは呼ばれない。approveは正本を変更しない
 - **保存**: `improvement-proposal` artifact を既存FileArtifactStore実装の別rootインスタンス(`.harness/feedback/`)に保存 — History一覧の汚染を避け、新しいDBは導入しない
 
+## Harness Maintenance / Pruning(#40)
+
+Harnessの巨大化を防ぐ「削減の制御」層(`src/maintenance/`)。#39(拡張の提案)と対になる**整理候補の生成**のみを行い、削除・正本変更は一切実行しない。
+
+```text
+Execution History(#35) + canonical definitions
+  → analyzeUsage / guardrailUsage(実測集計) + measureRuleFileSize(AGENTS.md計測)
+  → detectMaintenanceCandidates(決定論的判定: unused / low_usage / duplicate / oversized / usage_info)
+  → generateMaintenanceCandidates(冪等: mc-<fingerprint>で重複制御)
+  → Human Review(approve/reject は人間操作のみ) → 既存開発フロー(branch → PR → 品質ゲート → 人間merge) → Harness shrunk
+```
+
+- **利用実績の供給源**: workflow=execution-result、skill=execution-plan.steps[].skills(#34が記録したid、content未読)、runtime=model-execution-record、guardrail=guardrail_violation件数。すべて実測で、History未記録は「未使用」と断定せず観測窓を添付
+- **usage_info**: Runtime/Adapter と Guardrail は削除候補にせず利用情報の報告のみ(静的参照されるコード・安全機構を利用回数で刈らない設計判断)
+- **保存**: `maintenance-candidate` artifact を既存FileArtifactStore実装の別root(`.harness/maintenance/`)に保存 — #39のfeedback storeと分離、新しいDBなし
+
 ## Issue → Harness(#38)
 
 外部Issue(GitHub Issue等)をHarness実行の入力に接続する層（`src/issues/`）。CoreはGitHubを知らず、Issue取得は `IssueResolver Port` の実装(GitHub Adapter=gh CLI、Mock)に委譲される。
