@@ -26,6 +26,7 @@
  */
 
 import { decide } from "../decision-engine/decision-engine.js";
+import { decideReview } from "../review/review-decision.js";
 import { runWorkflow } from "../execution/execution-engine.js";
 import { verifyPlanIntegrity } from "./execution-plan.js";
 import { saveArtifact } from "../artifacts/artifact-store.js";
@@ -63,6 +64,8 @@ export async function runHarness({
   executionId,
   trackModelExecutions,
   verification = null,
+  /** @type {import("../review/contracts.js").ReviewPolicy | null} [mechanical severity policy (agents/reviewer.yaml); enables the review gate when provided] */
+  reviewPolicy = null,
   plan = null,
   input = null,
   nonInteractive = false
@@ -167,9 +170,19 @@ export async function runHarness({
   const effectiveVerification = verification && typeof verification.gates === "object" && verification.gates !== null
     ? verification
     : null;
+  const effectiveReviewPolicy = reviewPolicy && typeof reviewPolicy.severity === "object" && reviewPolicy.severity !== null
+    ? reviewPolicy
+    : null;
+  // Inner → outer: runtime adapter → review gate (inspects the produced
+  // review-result) → verification gate (#28). Both gates reuse the
+  // Execution Loop's own retry/on_failure rules; neither adds a loop.
+  let executeStepForRun = executeStep;
+  if (effectiveReviewPolicy !== null) {
+    executeStepForRun = withReviewGate(executeStepForRun, effectiveReviewPolicy);
+  }
   const wrappedExecuteStep = effectiveVerification
-    ? withVerificationGate(executeStep, effectiveVerification)
-    : executeStep;
+    ? withVerificationGate(executeStepForRun, effectiveVerification)
+    : executeStepForRun;
 
   const startedAtIso = new Date().toISOString();
   const startedAtMs = Date.now();
@@ -241,6 +254,68 @@ export async function runHarness({
     input,
     nonInteractive,
     message: summarize(result, selectedWorkflow)
+  };
+}
+
+/**
+ * Wraps the runtime executeStep so that every outcome producing a
+ * `review-result` artifact is mechanically re-judged against the
+ * Reviewer's severity policy. The reviewer's own `decision` field is
+ * treated as a claim, never as the verdict (Mechanical Verification is
+ * above self-reporting):
+ *
+ *   decideReview(findings, policy) → rejected / invalid, or the claim
+ *   itself says "reject"  →  the outcome becomes a Failure Result whose
+ *   `failure.severities` carries the blocking severities, so the
+ *   Execution Loop's existing `retry_policy.retry_on` / `on_failure`
+ *   rules (e.g. back to implement) apply unchanged.
+ *
+ * No error category is attached: a review rejection is a code-quality
+ * failure, deliberately NOT fallback-eligible (#23 classification).
+ * The free text of findings stays inside the persisted review-result
+ * artifact; the failure reason carries only machine-generated wording.
+ */
+function withReviewGate(executeStep, reviewPolicy) {
+  return async function executeWithReview(request) {
+    const outcome = await executeStep(request);
+    const reviewResults = (Array.isArray(outcome.artifacts) ? outcome.artifacts : [])
+      .filter((artifact) => artifact?.type === "review-result");
+    if (reviewResults.length === 0) {
+      return outcome;
+    }
+
+    // The newest review-result of this attempt is the one being judged.
+    const claimed = reviewResults[reviewResults.length - 1];
+    const decision = decideReview(claimed.findings ?? [], reviewPolicy);
+
+    if (decision.status === "approved" && claimed.decision !== "reject") {
+      return outcome; // existing success path untouched
+    }
+
+    const severities = [...new Set(
+      (Array.isArray(claimed.findings) ? claimed.findings : [])
+        .map((finding) => finding?.severity)
+        .filter((severity) => typeof severity === "string")
+    )];
+
+    const mechanicalReasons = decision.reasons ?? [];
+    const reasons = claimed.decision === "reject"
+      ? [...mechanicalReasons, 'the reviewer reported decision "reject".']
+      : decision.status === "invalid"
+        ? ["review findings could not be mechanically evaluated.", ...mechanicalReasons]
+        : mechanicalReasons;
+
+    return {
+      status: "failed",
+      failure: {
+        reason: `review gate rejected step "${request.stepId}": ${reasons.join(" ")}`,
+        severities,
+        unresolved: [`review rejections on step "${request.stepId}" must be addressed before the workflow can complete.`]
+      },
+      artifacts: outcome.artifacts ?? [],
+      tokensSpent: outcome.tokensSpent ?? 0,
+      runtime: outcome.runtime
+    };
   };
 }
 
