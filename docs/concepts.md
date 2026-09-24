@@ -174,6 +174,15 @@ Execution History(#35)から繰り返される失敗を検出し、Harness改善
 - **Approval境界**: statusは `proposed / approved / rejected`。遷移は人間の明示操作のみ(`harness feedback approve|reject`)で、検出・生成パスはstatusを変更しない。approve後も正本は変更されず、実装はbranch → PR → 品質ゲート → 人間mergeの既存フローに従う
 - **保存**: `improvement-proposal` artifact(#29 Schema拡張)。既存Artifact Store実装の別rootインスタンス(`.harness/feedback/`)に保存し、Execution Historyと混在させない。新しいDBは導入しない
 
+## Harness Maintenance / Pruning
+
+Harness自体の巨大化を防ぐ「削減の制御」(Issue #40、`src/maintenance/`)。利用実績(#35 Execution History)とサイズデータから**Pruning Candidate**(整理候補)を検出し人間へ提示する。削除機構ではなく**候補生成器** — 自動削除・正本変更のコードは存在しない。
+
+- **検出対象と判定**: Skill/Workflow = `unused`(usage 0)・`low_usage`(観測execution総数が閾値以上かつ利用が閾値未満、既定2)・`duplicate`(機械比較: capabilities+appliesTo.steps / routing intents の完全一致)。AGENTS.md = サイズ報告(常に)+`oversized`(上限を人間が明示指定した場合のみ)。Runtime/Guardrail = **`usage_info`報告のみ**(静的参照・安全機構のため候補化しない)
+- **実測のみ**: usageCount / lastUsedAt / ageDays / observedExecutions はHistory実測。History未記録を不要と断定せず、観測窓をevidenceに添付
+- **AGENTS.md計測**: bytes/lines/characters(実測)+ estimatedTokens(文字数÷4の推定、Tokenizer差異を明示)
+- **保存**: `maintenance-candidate` artifact(#29 Schema拡張)。`.harness/maintenance/`(#39の`.harness/feedback`と分離)。status `proposed/approved/rejected` は#39と同一語彙、遷移は人間の明示CLI操作のみ
+
 ## Context Handoff
 
 Agent間のContext受け渡しの基本方針。重複したToken消費（同じコードや会話履歴を各Agentが読み直す）を抑えるため、**会話履歴やコード全文ではなく構造化Artifactを基本の受け渡し単位**とする。
