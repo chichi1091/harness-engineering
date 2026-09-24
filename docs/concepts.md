@@ -156,6 +156,14 @@ Goal → Decision Engine の出力を実行可能な中間表現として永続�
 - **Secret protection**: 集約時に `redactSecrets`(#27/#22と同一の検出器)を適用し、認証情報を履歴出力に含めない
 - **CLI**: `--json` で機械可読出力。存在しないexecution idはexit 1
 
+## Execution Visualization
+
+Execution History(#35)の**投影(Projection)**(Issue #36、`src/run/execution-visualization.js`)。`buildExecutionVisualization` がHistoryデータから実行フローのタイムラインを構築し、`formatExecutionVisualization` が人間可読テキストへ変換する。
+
+- **投影のみ**: 表示用の状態・新規データ記録は持たない。既存History/Artifact StoreがSource of Truth
+- **区別表示**: Retry(`↻`、同一Stepの再実行)、Fallback(provider/model切り替え、`reason`付き)、Guardrail拒否、Escalation(記録がある場合のみ)を区別して表示する
+- **CLI**: `harness history <id> --timeline` でタイムライン表示(`--json` は既存History JSONのまま)
+
 ## Context Handoff
 
 Agent間のContext受け渡しの基本方針。重複したToken消費（同じコードや会話履歴を各Agentが読み直す）を抑えるため、**会話履歴やコード全文ではなく構造化Artifactを基本の受け渡し単位**とする。

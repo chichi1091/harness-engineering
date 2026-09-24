@@ -85,10 +85,11 @@ PR作成条件: 実行完了 + Mechanical Verification成功 + 未解決事項�
 node bin/harness.js history                       # 実行一覧(新着順、既定20件)
 node bin/harness.js history --limit 5 --status failed --workflow bug-fix --since 2026-09-01
 node bin/harness.js history <execution-id>        # 詳細(Steps/Retry/Fallback/Verification/Models/Artifacts)
+node bin/harness.js history <execution-id> --timeline  # 実行フローの可視化(#36 Visualization)
 node bin/harness.js history <execution-id> --json # 機械可読出力
 ```
 
-終了コード: `0` = 正常 / `1` = Execution not found 等 / `2` = 不正なオプション。
+`--timeline`はExecution→Plan→Step(attempt・retry・fallback)→Verification→PR Automation→Pull Requestの流れを、#35 Historyのデータ投影として表示します(Retryは`↻`、Fallbackは明示表示、推測値なし)。終了コード: `0` = 正常 / `1` = Execution not found 等 / `2` = 不正なオプション。
 
 ## harness plan(実行前の計画確認)と Plan/Run 分離
 
