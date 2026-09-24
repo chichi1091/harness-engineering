@@ -199,6 +199,16 @@ export async function getExecutionHistory(store, { executionId }) {
       result: record.artifact.status
     }));
 
+  const prAutomations = byType("pr-automation").map((record) => ({
+    status: record.artifact.status,
+    reason: redactSecrets(record.artifact.reason ?? null),
+    code: record.artifact.code ?? null,
+    branch: record.artifact.branch ?? null,
+    commit: record.artifact.commit ?? null,
+    pullRequestUrl: record.artifact.pullRequestUrl ?? null,
+    createdAt: record.createdAt ?? record.artifact.createdAt ?? null
+  }));
+
   const artifactInventory = records.map((record) => ({
     artifactId: record.artifactId,
     type: record.type,
@@ -242,6 +252,8 @@ export async function getExecutionHistory(store, { executionId }) {
     verification: verificationResults,
     guardrailDenials,
     fallbacks,
+    /** PR Automation outcomes (Issue #37), referenced by artifact — never re-derived. */
+    prAutomations,
     artifacts: artifactInventory,
     failureReason: redactSecrets(executionResult?.failureReason ?? null)
   };
