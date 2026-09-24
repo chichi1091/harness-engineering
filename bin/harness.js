@@ -974,6 +974,25 @@ async function runCommand(rest) {
     return outcome;
   };
 
+  // Review gate (#review): the Reviewer's severity policy from the
+  // canonical agents/reviewer.yaml. validateReviewPolicy must pass for
+  // the gate to arm; a broken canonical policy keeps prior behaviour
+  // (gate disabled) with a loud diagnostic instead of failing runs.
+  let reviewPolicy = null;
+  try {
+    const reviewerDefinition = parse(await readFile(join(projectRoot, "agents", "reviewer.yaml"), "utf8"));
+    const candidatePolicy = { severity: reviewerDefinition.severity, approval: reviewerDefinition.approval };
+    const { validateReviewPolicy } = await import("../src/review/review-decision.js");
+    const policyErrors = validateReviewPolicy(candidatePolicy);
+    if (policyErrors.length === 0) {
+      reviewPolicy = candidatePolicy;
+    } else {
+      console.error(`warning: review gate disabled - agents/reviewer.yaml policy is invalid: ${policyErrors.join(" ")}`);
+    }
+  } catch {
+    console.error("warning: review gate disabled - agents/reviewer.yaml could not be loaded.");
+  }
+
   const run = await runHarness({
     goal: effectiveGoal,
     input: issueResolution.input ?? null,
@@ -985,6 +1004,7 @@ async function runCommand(rest) {
     executionId: options.flags["execution-id"],
     trackModelExecutions: artifactStore !== null,
     verification: options.flags.noVerify === true ? null : verification,
+    reviewPolicy,
     plan,
     nonInteractive: options.flags.nonInteractive === true
   });
