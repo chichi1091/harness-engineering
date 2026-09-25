@@ -75,6 +75,16 @@ export type RuntimeExecutionMetadata = {
   /** Runtime-specific session/correlation identifier, if any. */
   sessionId?: string;
   /**
+   * The runtime's reported judgment confidence (the input of the
+   * existing escalation policy in model-tier.js). Anything other than
+   * "high" is read as low confidence. Unreported confidence means the
+   * escalation policy is not evaluated at all — the field is a report,
+   * never a guess.
+   */
+  confidence?: string;
+  /** Critical-decision flag, refining the escalation condition. */
+  critical?: boolean;
+  /**
    * Model/Provider the caller asked the runtime to use, when it differs
    * conceptually from what actually ran (Issue #22: requested vs
    * resolved). Equal to provider/model when no resolution happened.

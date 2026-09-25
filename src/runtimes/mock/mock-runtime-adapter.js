@@ -171,7 +171,11 @@ export function createMockRuntimeAdapter({
         status: "succeeded",
         artifacts: entry.artifacts ?? [],
         tokensSpent,
-        runtime: buildMetadata({ exitCode: entry.exitCode ?? 0 })
+        runtime: buildMetadata({
+          exitCode: entry.exitCode ?? 0,
+          ...(entry.confidence !== undefined ? { confidence: entry.confidence } : {}),
+          ...(entry.critical !== undefined ? { critical: entry.critical } : {})
+        })
       };
     }
   };
