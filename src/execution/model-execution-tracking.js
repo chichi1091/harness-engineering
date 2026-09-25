@@ -133,6 +133,7 @@ export function toModelExecutionArtifact(record) {
     attempt: record.attempt,
     runtime: record.runtime,
     status: record.status,
+    escalation: record.escalation ?? undefined,
     fallbackCount: record.fallbackCount ?? undefined,
     fallback: record.fallback ?? undefined,
     record

@@ -154,7 +154,8 @@ export async function getExecutionHistory(store, { executionId }) {
       resolvedProvider: record.artifact?.record?.resolvedProvider ?? null,
       resolvedModel: record.artifact?.record?.resolvedModel ?? null,
       fallbackCount: artifact.fallbackCount ?? null,
-      fallback: artifact.fallback ?? null
+      fallback: artifact.fallback ?? null,
+      escalation: artifact.escalation ?? null
     });
   }
 

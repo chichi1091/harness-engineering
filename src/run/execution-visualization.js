@@ -56,10 +56,11 @@ export function buildExecutionVisualization(history) {
         failureReason: attempt.failureReason,
         fallbackCount: attempt.fallbackCount ?? null,
         fallback: attempt.fallback ?? null,
+        escalation: attempt.escalation ?? null,
         // Retry = a later attempt of the same step (execution loop
         // on_failure); Fallback is provider/model switching (drawn with
-        // its own marker). Escalation has no recorded data yet (#10
-        // shapes are reserved), so it is never drawn by guessing.
+        // its own marker); Escalation is a tier raise (drawn with its
+        // own marker, only when a record actually carries the data).
         isRetry: attempt.attempt > 1,
         durationMs: attempt.durationMs
       });
@@ -184,6 +185,9 @@ export function formatExecutionVisualization(visualization) {
         const model = [entry.resolvedProvider, entry.resolvedModel].filter(Boolean).join("/") || "unknown model";
         const category = entry.errorCategory ? ` [${entry.errorCategory}]` : "";
         lines.push(`  ${mark} ${retryMark}${entry.stepId} attempt ${entry.attempt} — ${entry.role ?? "?"} — ${model}${category}`);
+        if (entry.escalation?.escalated === true) {
+          lines.push(`        ⇡ escalation ${entry.escalation.fromTier ?? "?"}→${entry.escalation.toTier ?? "?"} (${entry.escalation.reason ?? "no reason recorded"})`);
+        }
         if (entry.failureReason) {
           lines.push(`        reason: ${entry.failureReason}`);
         }

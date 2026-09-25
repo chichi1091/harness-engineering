@@ -8,6 +8,7 @@ import { createGuardedCommandRunner } from "../src/guardrails/guarded-command-ru
 import { createDefaultActionPolicy } from "../src/guardrails/action-policy.js";
 import { createOpenCodeRuntimeAdapter } from "../src/runtimes/opencode/opencode-runtime-adapter.js";
 import { createFallbackRuntimeAdapter } from "../src/runtimes/fallback-runtime-adapter.js";
+import { createEscalationRuntimeAdapter } from "../src/runtimes/escalation-runtime-adapter.js";
 import { createMockRuntimeAdapter } from "../src/runtimes/mock/mock-runtime-adapter.js";
 import { resolveTierModel } from "../src/execution/model-tier.js";
 import { decide } from "../src/decision-engine/decision-engine.js";
@@ -215,11 +216,35 @@ function parseCandidate(text) {
 }
 
 function composeRuntime({ runtime, profile, projectRoot, timeoutMs, fallbackCandidates, flags }) {
+  // Escalation (#10) is armed only when the profile actually declares a
+  // model_policy with escalation rules AND tiers to resolve them — the
+  // existing policy, unchanged. Without a profile nothing is armed and
+  // every execution behaves exactly as before.
+  const escalationPolicy = profile?.model_policy?.escalation?.length > 0 && profile?.model_tiers
+    ? { tiers: profile.model_tiers, modelPolicy: profile.model_policy }
+    : null;
+
   if (runtime === "mock") {
-    return createMockRuntimeAdapter({ name: "mock", provider: "mock-provider", model: "mock-model" }).executeStep;
+    const mockExecuteStep = createMockRuntimeAdapter({ name: "mock", provider: "mock-provider", model: "mock-model" }).executeStep;
+    if (escalationPolicy === null) {
+      return mockExecuteStep;
+    }
+    return function executeStep(request) {
+      const role = resolveRole(request.step);
+      const currentTier = profile.assignments?.[role]?.tier ?? "standard";
+      return createEscalationRuntimeAdapter({
+        name: "escalation",
+        policy: { tier: currentTier, tiers: escalationPolicy.tiers, modelPolicy: escalationPolicy.modelPolicy, workflowName: request.workflowName },
+        createDelegate: (candidate) => createMockRuntimeAdapter({
+          name: "mock",
+          provider: candidate.provider,
+          model: candidate.model
+        })
+      }).executeStep(request);
+    };
   }
 
-  // opencode runtime: Execution Engine → Fallback (#23) → OpenCode Runtime Adapter (#32)
+  // opencode runtime: Execution Engine → Escalation (#10, when armed) → Fallback (#23) → OpenCode Runtime Adapter (#32)
   //   → Guarded Command Runner (#27) → Node Command Runner (#28) → opencode CLI
   const actionPolicy = { ...createDefaultActionPolicy(), shell: { execute: "allow" } };
   const guardedRunner = createGuardedCommandRunner({
@@ -236,29 +261,45 @@ function composeRuntime({ runtime, profile, projectRoot, timeoutMs, fallbackCand
     const provider = flags.provider ?? roleModel?.provider;
     const model = flags.model ?? roleModel?.model;
 
-    const policy = {
-      primary: { provider: provider ?? "unspecified", model: model ?? "unspecified" },
-      fallbacks: fallbackCandidates,
-      maxFallbacks: fallbackCandidates.length
+    const buildTierChain = (tierCandidate) => {
+      const policy = {
+        primary: tierCandidate ?? { provider: provider ?? "unspecified", model: model ?? "unspecified" },
+        fallbacks: fallbackCandidates,
+        maxFallbacks: fallbackCandidates.length
+      };
+      return createFallbackRuntimeAdapter({
+        name: "opencode",
+        policy,
+        createDelegate: (candidate) => createOpenCodeRuntimeAdapter({
+          name: "opencode",
+          commandRunner: guardedRunner,
+          projectRoot,
+          timeoutMs,
+          provider: candidate.provider === "unspecified" ? undefined : candidate.provider,
+          model: candidate.model === "unspecified" ? undefined : candidate.model
+        })
+      });
     };
 
-    const adapter = createFallbackRuntimeAdapter({
-      name: "opencode",
-      policy,
-      createDelegate: (candidate) => createOpenCodeRuntimeAdapter({
-        name: "opencode",
-        commandRunner: guardedRunner,
-        projectRoot,
-        timeoutMs,
-        provider: candidate.provider === "unspecified" ? undefined : candidate.provider,
-        model: candidate.model === "unspecified" ? undefined : candidate.model
+    if (escalationPolicy === null) {
+      return buildTierChain(null).executeStep(request);
+    }
+
+    const currentTier = profile.assignments?.[role]?.tier ?? "standard";
+    const escalationAdapter = createEscalationRuntimeAdapter({
+      name: "escalation",
+      policy: { tier: currentTier, tiers: escalationPolicy.tiers, modelPolicy: escalationPolicy.modelPolicy, workflowName: request.workflowName },
+      createDelegate: (tierCandidate) => buildTierChain({
+        provider: tierCandidate.provider,
+        model: tierCandidate.model
       })
     });
 
     // OpenCode Adapter resolves the role from request.step.agent (--agent)
-    return adapter.executeStep(request);
+    return escalationAdapter.executeStep(request);
   };
 }
+
 
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
